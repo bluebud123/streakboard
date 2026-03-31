@@ -1,0 +1,26 @@
+@import "tailwindcss";
+
+:root {
+  --amber: #f59e0b;
+  --amber-dark: #d97706;
+}
+
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+.heatmap-grid {
+  display: grid;
+  grid-template-columns: repeat(20, 1fr);
+  gap: 3px;
+}
+
+.heatmap-cell {
+  aspect-ratio: 1;
+  border-radius: 2px;
+}
+
+.heatmap-l0 { background: #1e293b; }
+.heatmap-l1 { background: #854d0e; }
+.heatmap-l2 { background: #d97706; }
+.heatmap-l3 { background: #f59e0b; }

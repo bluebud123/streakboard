@@ -1,0 +1,47 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String    @id @default(cuid())
+  username    String    @unique
+  name        String
+  email       String    @unique
+  password    String
+  studyingFor String
+  examDate    String?
+  isPublic    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  checkIns    CheckIn[]
+  goals       Goal[]
+}
+
+model CheckIn {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date      String
+  minutes   Int      @default(0)
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@unique([userId, date])
+}
+
+model Goal {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  text         String
+  target       Int
+  current      Int      @default(0)
+  unit         String   @default("times")
+  achieved     Boolean  @default(false)
+  achievedDate String?
+  createdAt    DateTime @default(now())
+}
