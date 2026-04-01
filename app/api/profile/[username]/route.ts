@@ -23,6 +23,14 @@ export async function GET(
         orderBy: { createdAt: "asc" },
         select: { id: true, text: true, target: true, current: true, unit: true },
       },
+      checklists: {
+        where: { visibility: { in: ["PUBLIC_TEMPLATE", "PUBLIC_COLLAB", "PUBLIC_EDIT"] } },
+        select: {
+          id: true, name: true, slug: true, visibility: true,
+          items: { select: { id: true, progress: { select: { userId: true, done: true } } } },
+        },
+        orderBy: { createdAt: "desc" },
+      },
     },
   });
 
@@ -35,6 +43,15 @@ export async function GET(
   const heatmap = buildHeatmap(user.checkIns);
   const study = calcStudyStats(user.checkIns);
 
+  const checklists = user.checklists.map((cl) => ({
+    id: cl.id,
+    name: cl.name,
+    slug: cl.slug,
+    visibility: cl.visibility,
+    done: cl.items.filter((it) => it.progress.some((p) => p.userId === user.id && p.done)).length,
+    total: cl.items.length,
+  }));
+
   return NextResponse.json({
     name: user.name,
     username: user.username,
@@ -44,5 +61,6 @@ export async function GET(
     heatmap,
     study,
     goals: user.goals,
+    checklists,
   });
 }

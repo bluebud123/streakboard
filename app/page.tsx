@@ -58,10 +58,10 @@ export default function LandingPage() {
               Create your Streakboard →
             </Link>
             <Link
-              href="/u/demo"
+              href="/guest"
               className="px-8 py-3.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded-xl text-base transition-colors border border-slate-700"
             >
-              See example profile
+              Try without signing up
             </Link>
           </div>
         </section>
@@ -124,12 +124,20 @@ export default function LandingPage() {
         <section className="border-t border-slate-800 py-16 text-center px-6">
           <h2 className="text-2xl font-bold text-slate-100 mb-4">Start your streak today</h2>
           <p className="text-slate-400 mb-8">Free forever. No credit card. Takes 30 seconds.</p>
-          <Link
-            href="/signup"
-            className="inline-block px-10 py-4 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-base transition-colors"
-          >
-            Create your Streakboard →
-          </Link>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <Link
+              href="/signup"
+              className="inline-block px-10 py-4 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-base transition-colors"
+            >
+              Create your Streakboard →
+            </Link>
+            <Link
+              href="/guest"
+              className="inline-block px-10 py-4 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded-xl text-base transition-colors border border-slate-700"
+            >
+              Try as guest first
+            </Link>
+          </div>
         </section>
       </main>
 

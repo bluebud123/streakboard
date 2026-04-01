@@ -3,6 +3,7 @@ import Heatmap from "@/components/Heatmap";
 import StreakStats from "@/components/StreakStats";
 import ExamCountdown from "@/components/ExamCountdown";
 import GoalCard from "@/components/GoalCard";
+import ChecklistCard from "@/components/ChecklistCard";
 import ShareBanner from "@/components/ShareBanner";
 import Link from "next/link";
 
@@ -15,6 +16,7 @@ interface ProfileData {
   heatmap: { date: string; level: 0 | 1 | 2 | 3; minutes: number }[];
   study: { weekHours: number; allTimeHours: number };
   goals: { id: string; text: string; target: number; current: number; unit: string }[];
+  checklists: { id: string; name: string; slug: string | null; visibility: string; done: number; total: number }[];
 }
 
 async function getProfile(username: string): Promise<ProfileData | null> {
@@ -89,6 +91,18 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
             <div className="space-y-3">
               {profile.goals.map((g) => (
                 <GoalCard key={g.id} goal={g} />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Checklists */}
+        {profile.checklists.length > 0 && (
+          <section className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+            <h2 className="font-semibold text-slate-200 mb-4">Checklists</h2>
+            <div className="space-y-3">
+              {profile.checklists.map((cl) => (
+                <ChecklistCard key={cl.id} name={cl.name} done={cl.done} total={cl.total} slug={cl.slug} visibility={cl.visibility} />
               ))}
             </div>
           </section>

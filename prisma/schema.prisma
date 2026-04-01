@@ -8,18 +8,28 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+enum Visibility {
+  PRIVATE
+  PUBLIC_TEMPLATE
+  PUBLIC_COLLAB
+  PUBLIC_EDIT
+}
+
 model User {
-  id          String    @id @default(cuid())
-  username    String    @unique
-  name        String
-  email       String    @unique
-  password    String
-  studyingFor String
-  examDate    String?
-  isPublic    Boolean   @default(true)
-  createdAt   DateTime  @default(now())
-  checkIns    CheckIn[]
-  goals       Goal[]
+  id                  String                 @id @default(cuid())
+  username            String                 @unique
+  name                String
+  email               String                 @unique
+  password            String
+  studyingFor         String
+  examDate            String?
+  isPublic            Boolean                @default(true)
+  createdAt           DateTime               @default(now())
+  checkIns            CheckIn[]
+  goals               Goal[]
+  checklists          Checklist[]
+  participatingIn     ChecklistParticipant[]
+  checklistProgress   ChecklistProgress[]
 }
 
 model CheckIn {
@@ -45,4 +55,51 @@ model Goal {
   achieved     Boolean  @default(false)
   achievedDate String?
   createdAt    DateTime @default(now())
+}
+
+model Checklist {
+  id           String                 @id @default(cuid())
+  userId       String
+  user         User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String
+  description  String?
+  visibility   Visibility             @default(PRIVATE)
+  slug         String?                @unique
+  templateOf   String?
+  createdAt    DateTime               @default(now())
+  items        ChecklistItem[]
+  participants ChecklistParticipant[]
+}
+
+model ChecklistItem {
+  id          String              @id @default(cuid())
+  checklistId String
+  checklist   Checklist           @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+  text        String
+  order       Int                 @default(0)
+  createdAt   DateTime            @default(now())
+  progress    ChecklistProgress[]
+}
+
+model ChecklistParticipant {
+  id          String    @id @default(cuid())
+  checklistId String
+  checklist   Checklist @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  joinedAt    DateTime  @default(now())
+
+  @@unique([checklistId, userId])
+}
+
+model ChecklistProgress {
+  id     String        @id @default(cuid())
+  itemId String
+  item   ChecklistItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  userId String
+  user   User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  done   Boolean       @default(false)
+  doneAt DateTime?
+
+  @@unique([itemId, userId])
 }

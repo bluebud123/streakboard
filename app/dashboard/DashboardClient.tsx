@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { signOut } from "next-auth/react";
 import Link from "next/link";
+import ChecklistSection, { type ChecklistData } from "@/components/ChecklistSection";
 
 interface Goal {
   id: string;
@@ -27,9 +28,12 @@ interface Props {
   todayCheckIn: CheckIn | null;
   goals: Goal[];
   username: string;
+  ownedChecklists: ChecklistData[];
+  participatingChecklists: ChecklistData[];
+  userId: string;
 }
 
-export default function DashboardClient({ user, streaks, todayCheckIn, goals: initialGoals, username }: Props) {
+export default function DashboardClient({ user, streaks, todayCheckIn, goals: initialGoals, username, ownedChecklists, participatingChecklists, userId }: Props) {
   const [checkedIn, setCheckedIn] = useState(!!todayCheckIn);
   const [minutes, setMinutes] = useState(todayCheckIn?.minutes ?? 60);
   const [note, setNote] = useState(todayCheckIn?.note ?? "");
@@ -285,6 +289,9 @@ export default function DashboardClient({ user, streaks, todayCheckIn, goals: in
             </details>
           )}
         </section>
+
+        {/* Checklists */}
+        <ChecklistSection owned={ownedChecklists} participating={participatingChecklists} userId={userId} />
 
         {/* Share your profile */}
         <section className="bg-amber-500/5 border border-amber-500/20 rounded-2xl p-6">

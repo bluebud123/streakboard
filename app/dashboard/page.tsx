@@ -10,10 +10,27 @@ export default async function DashboardPage() {
 
   const userId = session.user.id;
 
-  const [user, checkIns, goals] = await Promise.all([
+  const [user, checkIns, goals, ownedChecklists, participatingChecklists] = await Promise.all([
     prisma.user.findUnique({ where: { id: userId }, select: { name: true, username: true, studyingFor: true, examDate: true } }),
     prisma.checkIn.findMany({ where: { userId }, orderBy: { date: "desc" } }),
     prisma.goal.findMany({ where: { userId }, orderBy: { createdAt: "asc" } }),
+    prisma.checklist.findMany({
+      where: { userId },
+      include: {
+        items: { orderBy: { order: "asc" }, include: { progress: { where: { userId } } } },
+        participants: { include: { user: { select: { id: true, name: true, username: true } } } },
+      },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.checklist.findMany({
+      where: { participants: { some: { userId } }, userId: { not: userId } },
+      include: {
+        user: { select: { name: true, username: true } },
+        items: { orderBy: { order: "asc" }, include: { progress: { where: { userId } } } },
+        participants: { include: { user: { select: { id: true, name: true, username: true } } } },
+      },
+      orderBy: { createdAt: "desc" },
+    }),
   ]);
 
   if (!user) redirect("/login");
@@ -30,6 +47,9 @@ export default async function DashboardPage() {
       todayCheckIn={todayCheckIn}
       goals={goals}
       username={(session.user as { username: string }).username}
+      ownedChecklists={ownedChecklists}
+      participatingChecklists={participatingChecklists}
+      userId={userId}
     />
   );
 }

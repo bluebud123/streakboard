@@ -5,7 +5,7 @@ import { signIn } from "next-auth/react";
 import Link from "next/link";
 
 export default function LoginPage() {
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -16,14 +16,14 @@ export default function LoginPage() {
     setError("");
 
     const res = await signIn("credentials", {
-      email,
+      username: username.toLowerCase().trim(),
       password,
       callbackUrl: "/dashboard",
       redirect: false,
     });
 
     if (res?.error) {
-      setError("Invalid email or password");
+      setError("Invalid username or password");
       setLoading(false);
     } else if (res?.url) {
       window.location.href = res.url;
@@ -40,10 +40,10 @@ export default function LoginPage() {
 
         <form onSubmit={submit} className="bg-slate-900 border border-slate-800 rounded-2xl p-8 space-y-4">
           <div>
-            <label className="block text-sm text-slate-300 mb-1">Email</label>
+            <label className="block text-sm text-slate-300 mb-1">Username</label>
             <input
-              type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
+              type="text" required value={username} onChange={(e) => setUsername(e.target.value)}
+              placeholder="yourname"
               className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2.5 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500 transition-colors text-sm"
             />
           </div>
