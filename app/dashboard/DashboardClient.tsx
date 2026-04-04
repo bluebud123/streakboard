@@ -495,6 +495,24 @@ export default function DashboardClient({
     </div>
   ) : null;
 
+  const shareCard = (
+    <div className="bg-amber-500/5 border border-amber-500/20 rounded-2xl p-4">
+      <h3 className="text-xs font-semibold text-amber-400 uppercase tracking-wider mb-1">Share</h3>
+      <p className="text-slate-500 text-xs mb-2 truncate">{shareLabel}</p>
+      <div className="flex gap-2">
+        <code className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-400 truncate">
+          {isProjectShareable ? `/project/${selectedProject!.slug}` : `/u/${username}`}
+        </code>
+        <button onClick={copyLink} className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold rounded-lg text-xs shrink-0">
+          {copied ? "✓" : "Copy"}
+        </button>
+      </div>
+      <Link href={shareHref} target="_blank" className="block mt-2 text-xs text-amber-400/70 hover:text-amber-400 text-center">
+        {isProjectShareable ? "View project →" : "View profile →"}
+      </Link>
+    </div>
+  );
+
   return (
     <div className="min-h-screen">
       <header className="border-b border-slate-800 px-6 py-4 flex items-center justify-between sticky top-0 z-40 bg-slate-950/95 backdrop-blur">
