@@ -19,11 +19,14 @@ model User {
   isPublic            Boolean                @default(true)
   isAdmin             Boolean                @default(false)
   createdAt           DateTime               @default(now())
-  checkIns            CheckIn[]
   checklists          Checklist[]
-  participatingIn     ChecklistParticipant[]
-  checklistProgress   ChecklistProgress[]
+  checkIns            CheckIn[]
+  participants        ChecklistParticipant[]
+  progress            ChecklistProgress[]
   revisions           ChecklistRevision[]
+  requests            ProjectRequest[]       @relation("Requester")
+  createdItems        ChecklistItem[]        @relation("ItemCreator")
+  personalOrders      ChecklistPersonalOrder[]
 }
 
 model CheckIn {
@@ -51,6 +54,7 @@ model Checklist {
   createdAt    DateTime               @default(now())
   items        ChecklistItem[]
   participants ChecklistParticipant[]
+  requests     ProjectRequest[]
 }
 
 model ChecklistItem {
@@ -58,18 +62,48 @@ model ChecklistItem {
   checklistId String
   checklist   Checklist           @relation(fields: [checklistId], references: [id], onDelete: Cascade)
   parentId    String?
-  parent      ChecklistItem?      @relation("ItemChildren", fields: [parentId], references: [id], onDelete: Cascade)
-  children    ChecklistItem[]     @relation("ItemChildren")
+  parent      ChecklistItem?      @relation("ItemToItem", fields: [parentId], references: [id], onDelete: Cascade)
+  children    ChecklistItem[]     @relation("ItemToItem")
   text        String
   isSection   Boolean             @default(false)
-  depth       Int                 @default(0)
+  depth       Int                 @default(1)
   order       Int                 @default(0)
+  createdById String?
+  createdBy   User?               @relation("ItemCreator", fields: [createdById], references: [id], onDelete: SetNull)
   createdAt   DateTime            @default(now())
   progress    ChecklistProgress[]
   revisions   ChecklistRevision[]
+  personalOrders ChecklistPersonalOrder[]
 
   @@index([parentId])
   @@index([checklistId, order])
+}
+
+model ChecklistPersonalOrder {
+  id          String        @id @default(cuid())
+  itemId      String
+  item        ChecklistItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  order       Int
+
+  @@unique([itemId, userId])
+}
+
+model ProjectRequest {
+  id          String    @id @default(cuid())
+  type        String    // e.g., "DELETE"
+  checklistId String
+  checklist   Checklist @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+  itemId      String?
+  requesterId String
+  requester   User      @relation("Requester", fields: [requesterId], references: [id], onDelete: Cascade)
+  status      String    @default("PENDING") // PENDING, APPROVED, REJECTED
+  message     String?   // For rejection feedback
+  createdAt   DateTime  @default(now())
+
+  @@index([checklistId])
+  @@index([requesterId])
 }
 
 model ChecklistParticipant {

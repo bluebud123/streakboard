@@ -35,7 +35,7 @@ export default async function DashboardPage() {
 
   const userId = session.user.id;
 
-  const [user, checkIns, ownedChecklists, participatingChecklists] = await Promise.all([
+  const [user, checkIns, ownedChecklists, participatingChecklists, recentRequests] = await Promise.all([
     prisma.user.findUnique({ where: { id: userId }, select: { name: true, username: true, studyingFor: true, examDate: true, isAdmin: true } }),
     prisma.checkIn.findMany({ where: { userId }, orderBy: { date: "desc" } }),
     prisma.checklist.findMany({
@@ -43,6 +43,7 @@ export default async function DashboardPage() {
       include: {
         items: nestedItems(userId),
         participants: { include: { user: { select: { id: true, name: true, username: true } } } },
+        requests: { where: { status: "PENDING" }, include: { requester: { select: { name: true, username: true } } } },
       },
       orderBy: { createdAt: "desc" },
     }),
@@ -54,6 +55,12 @@ export default async function DashboardPage() {
         participants: { include: { user: { select: { id: true, name: true, username: true } } } },
       },
       orderBy: { createdAt: "desc" },
+    }),
+    prisma.projectRequest.findMany({
+      where: { requesterId: userId, status: { not: "PENDING" } },
+      include: { checklist: { select: { name: true } } },
+      orderBy: { createdAt: "desc" },
+      take: 5,
     }),
   ]);
 
@@ -93,6 +100,7 @@ export default async function DashboardPage() {
       username={(session.user as { username: string }).username}
       ownedChecklists={ownedChecklists as never}
       participatingChecklists={participatingChecklists as never}
+      recentRequests={JSON.parse(JSON.stringify(recentRequests))}
       userId={userId}
     />
   );

@@ -23,13 +23,18 @@ function nestedItemsInclude(userId: string) {
     orderBy: { order: "asc" as const },
     include: {
       progress: { where: { userId } },
+      personalOrders: { where: { userId } },
       children: {
         orderBy: { order: "asc" as const },
         include: {
           progress: { where: { userId } },
+          personalOrders: { where: { userId } },
           children: {
             orderBy: { order: "asc" as const },
-            include: { progress: { where: { userId } } },
+            include: {
+              progress: { where: { userId } },
+              personalOrders: { where: { userId } },
+            },
           },
         },
       },
@@ -42,12 +47,13 @@ export async function GET() {
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const userId = session.user.id;
 
-  const [owned, participating] = await Promise.all([
+  const [owned, participating, requests] = await Promise.all([
     prisma.checklist.findMany({
       where: { userId },
       include: {
         items: nestedItemsInclude(userId),
         participants: { include: { user: { select: { id: true, name: true, username: true } } } },
+        requests: { where: { status: "PENDING" }, include: { requester: { select: { name: true, username: true } } } },
       },
       orderBy: { createdAt: "desc" },
     }),
@@ -60,9 +66,15 @@ export async function GET() {
       },
       orderBy: { createdAt: "desc" },
     }),
+    prisma.projectRequest.findMany({
+      where: { requesterId: userId, status: { not: "PENDING" } },
+      include: { checklist: { select: { name: true } } },
+      orderBy: { createdAt: "desc" },
+      take: 5,
+    }),
   ]);
 
-  return NextResponse.json({ owned, participating });
+  return NextResponse.json({ owned, participating, recentRequests: requests });
 }
 
 export async function POST(req: Request) {
@@ -101,7 +113,7 @@ export async function PATCH(req: Request) {
 
     const count = await prisma.checklistItem.count({ where: { checklistId, parentId } });
     const item = await prisma.checklistItem.create({
-      data: { checklistId, text, parentId, depth, order: count },
+      data: { checklistId, text, parentId, depth, order: count, createdById: userId },
     });
     return NextResponse.json(item);
   }
@@ -120,18 +132,33 @@ export async function PATCH(req: Request) {
     return NextResponse.json(updated);
   }
 
-  // ── deleteItem ────────────────────────────────────────────────────────────
+  // ── deleteItem ──────────────────────────────────────────────────────────
   if (action === "deleteItem") {
     const { itemId } = body;
     const item = await prisma.checklistItem.findUnique({ where: { id: itemId }, include: { checklist: true } });
     if (!item) return NextResponse.json({ error: "Not found" }, { status: 404 });
-    const canEdit =
-      item.checklist.userId === userId ||
-      (item.checklist.visibility === "PUBLIC_EDIT" &&
-        !!(await prisma.checklistParticipant.findUnique({ where: { checklistId_userId: { checklistId: item.checklistId, userId } } })));
-    if (!canEdit) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    await prisma.checklistItem.delete({ where: { id: itemId } });
-    return NextResponse.json({ ok: true });
+
+    const isOwner = item.checklist.userId === userId;
+    const isCreator = item.createdById === userId;
+    const isParticipant = !!(await prisma.checklistParticipant.findUnique({ where: { checklistId_userId: { checklistId: item.checklistId, userId } } }));
+
+    if (!isOwner && !isParticipant) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+    if (isOwner || isCreator) {
+      await prisma.checklistItem.delete({ where: { id: itemId } });
+      return NextResponse.json({ ok: true, deleted: true });
+    } else {
+      // Create a request for the creator
+      await prisma.projectRequest.create({
+        data: {
+          type: "DELETE",
+          checklistId: item.checklistId,
+          itemId: item.id,
+          requesterId: userId,
+        },
+      });
+      return NextResponse.json({ ok: true, requested: true });
+    }
   }
 
   // ── reorderItems ──────────────────────────────────────────────────────────
@@ -139,17 +166,28 @@ export async function PATCH(req: Request) {
     const { checklistId, orderedIds } = body;
     const cl = await prisma.checklist.findUnique({ where: { id: checklistId } });
     if (!cl) return NextResponse.json({ error: "Not found" }, { status: 404 });
-    const canEdit =
-      cl.userId === userId ||
-      (cl.visibility === "PUBLIC_EDIT" &&
-        !!(await prisma.checklistParticipant.findUnique({ where: { checklistId_userId: { checklistId, userId } } })));
-    if (!canEdit) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    const isOwner = cl.userId === userId;
+    const isParticipant = !!(await prisma.checklistParticipant.findUnique({ where: { checklistId_userId: { checklistId, userId } } }));
+    if (!isOwner && !isParticipant) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-    await prisma.$transaction(
-      (orderedIds as string[]).map((id: string, i: number) =>
-        prisma.checklistItem.update({ where: { id }, data: { order: i } })
-      )
-    );
+    if (isOwner) {
+      await prisma.$transaction(
+        (orderedIds as string[]).map((id: string, i: number) =>
+          prisma.checklistItem.update({ where: { id }, data: { order: i } })
+        )
+      );
+    } else {
+      // Participant: update personal order
+      await prisma.$transaction(
+        (orderedIds as string[]).map((id: string, i: number) =>
+          prisma.checklistPersonalOrder.upsert({
+            where: { itemId_userId: { itemId: id, userId } },
+            update: { order: i },
+            create: { itemId: id, userId, order: i },
+          })
+        )
+      );
+    }
     return NextResponse.json({ ok: true });
   }
 
@@ -426,6 +464,31 @@ export async function PATCH(req: Request) {
     const cl = await prisma.checklist.findUnique({ where: { id: checklistId } });
     if (!cl || cl.userId !== userId) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     await prisma.checklist.delete({ where: { id: checklistId } });
+    return NextResponse.json({ ok: true });
+  }
+
+  // ── handleProjectRequest ──────────────────────────────────────────────────
+  if (action === "handleProjectRequest") {
+    const { requestId, status, message } = body;
+    const request = await prisma.projectRequest.findUnique({
+      where: { id: requestId },
+      include: { checklist: true },
+    });
+    if (!request || request.checklist.userId !== userId) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    if (status === "APPROVED") {
+      if (request.type === "DELETE" && request.itemId) {
+        await prisma.checklistItem.delete({ where: { id: request.itemId } });
+      }
+      await prisma.projectRequest.delete({ where: { id: requestId } });
+    } else {
+      await prisma.projectRequest.update({
+        where: { id: requestId },
+        data: { status: "REJECTED", message: message || "Request denied by owner" },
+      });
+    }
     return NextResponse.json({ ok: true });
   }
 

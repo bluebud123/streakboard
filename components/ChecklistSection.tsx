@@ -238,14 +238,15 @@ function TemplatePreview({ filename }: { filename: string }) {
 
 // ─── Revision date helpers ────────────────────────────────────────────────────
 
-function latestRevisionShortDate(revisions: Revision[]): string | null {
-  if (!revisions.length) return null;
-  const d = new Date(revisions[0].createdAt as unknown as string | Date);
-  const now = new Date();
-  if (d.getFullYear() === now.getFullYear()) {
-    return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-  }
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "2-digit" });
+function allRevisionShortDates(revisions: Revision[]): string[] {
+  return revisions.map((r) => {
+    const d = new Date(r.createdAt as unknown as string | Date);
+    const now = new Date();
+    if (d.getFullYear() === now.getFullYear()) {
+      return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    }
+    return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "2-digit" });
+  });
 }
 
 // ─── Tree Item Renderer ───────────────────────────────────────────────────────
@@ -291,6 +292,7 @@ function ItemNode({
   onDragStart, onDragOver, onDrop, onDragEnd, dragId, dragOverId,
   collabProgress,
 }: ItemNodeProps) {
+  const [showAllDates, setShowAllDates] = useState(false);
   const checked = item.progress[0]?.done ?? false;
   const isDragging = dragId === item.id;
   const isDragOver = dragOverId === item.id && dragId !== item.id;
@@ -473,15 +475,35 @@ function ItemNode({
           </span>
         )}
 
-        {/* Revision count + latest date */}
+        {/* Revision count + dates */}
         {item.revisions.length > 0 && !isEditing && (() => {
-          const dateStr = latestRevisionShortDate(item.revisions);
+          const dates = allRevisionShortDates(item.revisions);
+          const visible = showAllDates ? dates : dates.slice(0, 3);
+          const hasMore = dates.length > 3;
+
           return (
             <span
-              className="text-xs text-amber-500/60 shrink-0 font-mono whitespace-nowrap"
+              className="text-[10px] text-amber-500/60 shrink-0 font-mono whitespace-nowrap flex items-center gap-1"
               title={`Reviewed ${item.revisions.length}×. Unchecking keeps your history; use − to remove the last review entry.`}
             >
-              +{item.revisions.length}{dateStr ? ` · ${dateStr}` : ""}
+              <span className="font-bold">+{item.revisions.length}</span>
+              <span className="flex items-center gap-1 overflow-hidden">
+                {visible.map((d, i) => (
+                  <span key={i} className="bg-slate-800 px-1 rounded">{d}</span>
+                ))}
+                {hasMore && !showAllDates && (
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); setShowAllDates(true); }}
+                    className="hover:text-amber-400 underline decoration-dotted"
+                  >...</button>
+                )}
+                {showAllDates && (
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); setShowAllDates(false); }}
+                    className="hover:text-amber-400"
+                  >«</button>
+                )}
+              </span>
             </span>
           );
         })()}
@@ -720,8 +742,14 @@ export default function ChecklistSection({
       method: "PATCH", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "deleteItem", itemId }),
     });
+    const data = await res.json();
     if (res.ok) {
-      patchOwned(checklistId, (c) => ({ ...c, items: removeItemFromTree(c.items, itemId) }));
+      if (data.requested) {
+        toast.success("Deletion request sent to project owner.");
+      } else {
+        patchOwned(checklistId, (c) => ({ ...c, items: removeItemFromTree(c.items, itemId) }));
+        toast.success("Item deleted.");
+      }
     } else {
       toast.error("Failed to delete item — please try again.");
     }

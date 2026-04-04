@@ -26,6 +26,7 @@ interface Props {
   username: string;
   ownedChecklists: ChecklistData[];
   participatingChecklists: ChecklistData[];
+  recentRequests: any[];
   userId: string;
 }
 
@@ -164,9 +165,72 @@ function Leaderboard({ progress, currentUserId }: { progress: CollabProgress; cu
   );
 }
 
+function ProjectRequests({ ownedProjects, recentRequests, onAction }: { 
+  ownedProjects: (ChecklistData & { requests?: any[] })[]; 
+  recentRequests: any[];
+  onAction: () => void;
+}) {
+  const pending = ownedProjects.flatMap(p => (p.requests || []).map(r => ({ ...r, project: p.name })));
+
+  async function handleRequest(requestId: string, status: "APPROVED" | "REJECTED") {
+    const res = await fetch("/api/checklists", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "handleProjectRequest", requestId, status }),
+    });
+    if (res.ok) {
+      toast.success(status === "APPROVED" ? "Request approved" : "Request rejected");
+      onAction();
+    }
+  }
+
+  if (pending.length === 0 && recentRequests.length === 0) return null;
+
+  return (
+    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-4">
+      {pending.length > 0 && (
+        <div>
+          <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Project Requests</h3>
+          <div className="space-y-3">
+            {pending.map(r => (
+              <div key={r.id} className="bg-slate-800/50 rounded-xl p-3 border border-slate-700/50">
+                <p className="text-xs text-slate-300">
+                  <span className="text-amber-400 font-medium">@{r.requester.username}</span> requested to delete an item from <span className="text-slate-100 font-medium">{r.project}</span>
+                </p>
+                <div className="flex gap-2 mt-3">
+                  <button onClick={() => handleRequest(r.id, "APPROVED")} className="flex-1 py-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-[10px] font-bold rounded-lg transition-colors">APPROVE</button>
+                  <button onClick={() => handleRequest(r.id, "REJECTED")} className="flex-1 py-1 bg-slate-700 hover:bg-red-500/20 hover:text-red-400 text-slate-300 text-[10px] font-bold rounded-lg transition-colors border border-slate-600 hover:border-red-500/50">REJECT</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {recentRequests.length > 0 && (
+        <div>
+          <h3 className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-2">Recent Notifications</h3>
+          <div className="space-y-2">
+            {recentRequests.map(r => (
+              <div key={r.id} className="text-[11px] text-slate-400 py-1 border-b border-slate-800/50 last:border-0">
+                {r.status === "REJECTED" ? (
+                  <span className="text-red-400/80">✕ Your request for "{r.checklist.name}" was denied.</span>
+                ) : (
+                  <span className="text-emerald-400/80">✓ Your request for "{r.checklist.name}" was approved.</span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function DashboardClient({
   user, streaks, todayLogs: initTodayLogs, allCheckIns: initAllCheckIns,
-  username, ownedChecklists: initOwned, participatingChecklists: initParticipating, userId,
+  username, ownedChecklists: initOwned, participatingChecklists: initParticipating, 
+  recentRequests: initRecentRequests, userId,
 }: Props) {
   const [allCheckIns, setAllCheckIns] = useState(initAllCheckIns);
   const [todayLogs, setTodayLogs] = useState(initTodayLogs);
@@ -214,6 +278,17 @@ export default function DashboardClient({
   const [ownedState, setOwnedState] = useState<ChecklistData[]>(initOwned);
   const [participatingState, setParticipatingState] = useState<ChecklistData[]>(initParticipating);
   const [collabProgress, setCollabProgress] = useState<Record<string, CollabProgress>>({});
+  const [recentRequestsState, setRecentRequestsState] = useState(initRecentRequests);
+
+  async function refreshData() {
+    const res = await fetch("/api/checklists");
+    if (res.ok) {
+      const data = await res.json();
+      setOwnedState(data.owned);
+      setParticipatingState(data.participating);
+      setRecentRequestsState(data.recentRequests);
+    }
+  }
 
   const profileUrl = typeof window !== "undefined" ? `${window.location.origin}/u/${username}` : `/u/${username}`;
   const examDays = user.examDate ? daysUntil(user.examDate) : null;
@@ -250,6 +325,10 @@ export default function DashboardClient({
   const leaderboardBlock = selectedProgress && selectedProgress.overall.length > 1 ? (
     <Leaderboard progress={selectedProgress} currentUserId={userId} />
   ) : null;
+
+  const projectRequestsBlock = (
+    <ProjectRequests ownedProjects={ownedState} recentRequests={recentRequestsState} onAction={refreshData} />
+  );
 
   function recalcStreak(logs: CheckIn[]) {
     const { currentStreak: s } = calcStreaks(logs.map((c) => c.date));
@@ -416,24 +495,6 @@ export default function DashboardClient({
     </div>
   ) : null;
 
-  const shareCard = (
-    <div className="bg-amber-500/5 border border-amber-500/20 rounded-2xl p-4">
-      <h3 className="text-xs font-semibold text-amber-400 uppercase tracking-wider mb-1">Share</h3>
-      <p className="text-slate-500 text-xs mb-2 truncate">{shareLabel}</p>
-      <div className="flex gap-2">
-        <code className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-400 truncate">
-          {isProjectShareable ? `/project/${selectedProject!.slug}` : `/u/${username}`}
-        </code>
-        <button onClick={copyLink} className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold rounded-lg text-xs shrink-0">
-          {copied ? "✓" : "Copy"}
-        </button>
-      </div>
-      <Link href={shareHref} target="_blank" className="block mt-2 text-xs text-amber-400/70 hover:text-amber-400 text-center">
-        {isProjectShareable ? "View project →" : "View profile →"}
-      </Link>
-    </div>
-  );
-
   return (
     <div className="min-h-screen">
       <header className="border-b border-slate-800 px-6 py-4 flex items-center justify-between sticky top-0 z-40 bg-slate-950/95 backdrop-blur">
@@ -459,8 +520,8 @@ export default function DashboardClient({
         {mobileTab === "projects" && (
           <>
             <ChecklistSection
-              owned={initOwned}
-              participating={initParticipating}
+              owned={ownedState}
+              participating={participatingState}
               userId={userId}
               onExpandChange={(id) => setExpandedProjectId(id)}
               onOwnedChange={setOwnedState}
@@ -471,6 +532,7 @@ export default function DashboardClient({
               onSelect={(id) => setExpandedProjectId(expandedProjectId === id ? null : id)}
               onSectionClick={handleSectionClick} />
             {leaderboardBlock}
+            {projectRequestsBlock}
             {shareCard}
           </>
         )}
@@ -537,12 +599,13 @@ export default function DashboardClient({
           </div>
           {logSection}
           <ChecklistSection
-            owned={initOwned}
-            participating={initParticipating}
+            owned={ownedState}
+            participating={participatingState}
             userId={userId}
             onExpandChange={(id) => setExpandedProjectId(id)}
             onOwnedChange={setOwnedState}
             onParticipatingChange={setParticipatingState}
+            onCollabProgressChange={setCollabProgress}
           />
         </main>
 
@@ -551,6 +614,7 @@ export default function DashboardClient({
             onSelect={(id) => setExpandedProjectId(expandedProjectId === id ? null : id)}
             onSectionClick={handleSectionClick} />
           {leaderboardBlock}
+          {projectRequestsBlock}
           {shareCard}
         </aside>
       </div>
