@@ -253,7 +253,8 @@ function latestRevisionShortDate(revisions: Revision[]): string | null {
 interface ItemNodeProps {
   item: TreeItem;
   checklistId: string;
-  isOwner: boolean;
+  canEdit: boolean;
+  canCheck: boolean;
   collapsedIds: Set<string>;
   onToggleCollapse: (id: string) => void;
   editingId: string | null;
@@ -282,7 +283,7 @@ interface ItemNodeProps {
 }
 
 function ItemNode({
-  item, checklistId, isOwner,
+  item, checklistId, canEdit, canCheck,
   collapsedIds, onToggleCollapse,
   editingId, editingText, onEditStart, onEditChange, onEditSave, onEditCancel,
   onCheck, onUncheck, onRemoveRevision, onDelete, onAddChild,
@@ -296,7 +297,7 @@ function ItemNode({
   const isCollapsed = collapsedIds.has(item.id);
 
   const commonProps = {
-    draggable: isOwner,
+    draggable: canEdit,
     onDragStart: () => onDragStart(item.id),
     onDragOver: (e: React.DragEvent) => onDragOver(e, item.id),
     onDrop: () => onDrop(item.id, null),
@@ -306,7 +307,6 @@ function ItemNode({
   const isEditing = editingId === item.id;
 
   const sectionStats = item.isSection ? countCheckable(item.children ?? []) : null;
-  const sectionCollab = item.isSection ? collabProgress?.sections.find(s => s.sectionId === item.id) : null;
 
   if (item.isSection) {
     return (
@@ -320,7 +320,7 @@ function ItemNode({
             {isCollapsed ? "▶" : "▼"}
           </button>
 
-          {isOwner && <span className="text-slate-600 text-xs opacity-0 group-hover:opacity-100 cursor-grab shrink-0">⠿</span>}
+          {canEdit && <span className="text-slate-600 text-xs opacity-0 group-hover:opacity-100 cursor-grab shrink-0">⠿</span>}
 
           {/* Section text — double-click to edit */}
           {isEditing ? (
@@ -338,8 +338,8 @@ function ItemNode({
           ) : (
             <span
               className="flex-1 text-xs font-bold text-amber-400 uppercase tracking-wider border-b border-slate-700 pb-0.5 cursor-text"
-              onDoubleClick={() => isOwner && onEditStart(item.id, item.text)}
-              title={isOwner ? "Double-click to edit" : undefined}
+              onDoubleClick={() => canEdit && onEditStart(item.id, item.text)}
+              title={canEdit ? "Double-click to edit" : undefined}
             >
               {item.text}
             </span>
@@ -350,7 +350,7 @@ function ItemNode({
             <span className="text-xs text-slate-500 shrink-0 font-mono">{sectionStats.done}/{sectionStats.total}</span>
           )}
 
-          {isOwner && !isEditing && (
+          {canEdit && !isEditing && (
             <button
               onClick={() => onEditStart(item.id, item.text)}
               className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-slate-300 text-xs transition-all shrink-0"
@@ -358,7 +358,7 @@ function ItemNode({
             >✎</button>
           )}
 
-          {isOwner && (
+          {canEdit && (
             <button
               onClick={() => onDelete(checklistId, item.id)}
               className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 text-xs transition-all shrink-0"
@@ -378,29 +378,11 @@ function ItemNode({
           </div>
         )}
 
-        {/* Collab progress per section */}
-        {sectionCollab && sectionCollab.participants.length > 1 && (
-          <div className="ml-6 mb-2 space-y-0.5">
-            {sectionCollab.participants.map((p) => {
-              const pct = p.total > 0 ? Math.round((p.done / p.total) * 100) : 0;
-              return (
-                <div key={p.userId} className="flex items-center gap-2">
-                  <span className="text-xs text-slate-500 w-20 truncate shrink-0">@{p.username}</span>
-                  <div className="flex-1 bg-slate-700 rounded-full h-1">
-                    <div className="bg-amber-500/50 h-1 rounded-full" style={{ width: `${pct}%` }} />
-                  </div>
-                  <span className="text-xs text-slate-600 shrink-0 w-10 text-right">{p.done}/{p.total}</span>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
         {/* Children */}
         {!isCollapsed && (
           <div className="ml-4 space-y-0.5 border-l border-slate-700/50 pl-3">
             {item.children?.map((child) => (
-              <ItemNode key={child.id} item={child} checklistId={checklistId} isOwner={isOwner}
+              <ItemNode key={child.id} item={child} checklistId={checklistId} canEdit={canEdit} canCheck={canCheck}
                 collapsedIds={collapsedIds} onToggleCollapse={onToggleCollapse}
                 editingId={editingId} editingText={editingText} onEditStart={onEditStart} onEditChange={onEditChange} onEditSave={onEditSave} onEditCancel={onEditCancel}
                 onCheck={onCheck} onUncheck={onUncheck} onRemoveRevision={onRemoveRevision} onDelete={onDelete} onAddChild={onAddChild}
@@ -422,7 +404,7 @@ function ItemNode({
                 <button onClick={() => onAddSubmit(checklistId)} className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-semibold rounded-lg">Add</button>
                 <button onClick={onAddCancel} className="text-slate-500 text-xs px-1">✕</button>
               </div>
-            ) : isOwner ? (
+            ) : canEdit ? (
               <button onClick={() => onAddChild(item.id, 1)} className="text-xs text-slate-600 hover:text-amber-400 transition-colors py-0.5">+ add task</button>
             ) : null}
           </div>
@@ -449,10 +431,10 @@ function ItemNode({
           <span className="w-4 shrink-0" />
         )}
 
-        {isOwner && <span className="text-slate-600 text-xs opacity-0 group-hover:opacity-100 cursor-grab shrink-0">⠿</span>}
+        {canEdit && <span className="text-slate-600 text-xs opacity-0 group-hover:opacity-100 cursor-grab shrink-0">⠿</span>}
 
         {/* − button: remove last revision (undo accidental check) */}
-        {item.revisions.length > 0 ? (
+        {item.revisions.length > 0 && canCheck ? (
           <button
             onClick={() => onRemoveRevision(checklistId, item.id)}
             title={`Remove last revision (${item.revisions.length} logged)`}
@@ -466,8 +448,9 @@ function ItemNode({
         <input
           type="checkbox"
           checked={checked}
-          onChange={() => onCheck(checklistId, item.id)}
-          className="w-5 h-5 rounded accent-amber-500 cursor-pointer shrink-0"
+          onChange={() => canCheck && onCheck(checklistId, item.id)}
+          disabled={!canCheck}
+          className="w-5 h-5 rounded accent-amber-500 cursor-pointer shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
         />
 
         {/* Text — double-click or pencil to edit */}
@@ -484,7 +467,7 @@ function ItemNode({
         ) : (
           <span
             className={`flex-1 text-sm leading-snug ${checked ? "line-through text-slate-500" : item.depth === 2 ? "text-slate-400" : "text-slate-300"}`}
-            onDoubleClick={() => isOwner && onEditStart(item.id, item.text)}
+            onDoubleClick={() => canEdit && onEditStart(item.id, item.text)}
           >
             {item.text}
           </span>
@@ -504,7 +487,7 @@ function ItemNode({
         })()}
 
         {/* Pencil edit button (always visible on hover for owners) */}
-        {isOwner && !isEditing && (
+        {canEdit && !isEditing && (
           <button
             onClick={() => onEditStart(item.id, item.text)}
             className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-slate-300 text-xs transition-all shrink-0"
@@ -512,7 +495,7 @@ function ItemNode({
           >✎</button>
         )}
 
-        {isOwner && (
+        {canEdit && (
           <button
             onClick={() => onDelete(checklistId, item.id)}
             className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 text-xs transition-all shrink-0"
@@ -524,7 +507,7 @@ function ItemNode({
       {!isCollapsed && item.depth < 2 && (
         <div className="ml-9 space-y-0.5">
           {item.children?.map((child) => (
-            <ItemNode key={child.id} item={child} checklistId={checklistId} isOwner={isOwner}
+            <ItemNode key={child.id} item={child} checklistId={checklistId} canEdit={canEdit} canCheck={canCheck}
               collapsedIds={collapsedIds} onToggleCollapse={onToggleCollapse}
               editingId={editingId} editingText={editingText} onEditStart={onEditStart} onEditChange={onEditChange} onEditSave={onEditSave} onEditCancel={onEditCancel}
               onCheck={onCheck} onUncheck={onUncheck} onRemoveRevision={onRemoveRevision} onDelete={onDelete} onAddChild={onAddChild}
@@ -546,7 +529,7 @@ function ItemNode({
               <button onClick={() => onAddSubmit(checklistId)} className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-semibold rounded-lg">Add</button>
               <button onClick={onAddCancel} className="text-slate-500 text-xs px-1">✕</button>
             </div>
-          ) : isOwner ? (
+          ) : canEdit ? (
             <button onClick={() => onAddChild(item.id, item.depth + 1)} className="text-xs text-slate-600 hover:text-amber-400 transition-colors">+ subtask</button>
           ) : null}
         </div>
@@ -567,9 +550,13 @@ interface Props {
   onExpandChange?: (id: string | null) => void;
   onOwnedChange?: (list: ChecklistData[]) => void;
   onParticipatingChange?: (list: ChecklistData[]) => void;
+  onCollabProgressChange?: (progress: Record<string, CollabProgress>) => void;
 }
 
-export default function ChecklistSection({ owned: initialOwned, participating: initialParticipating, userId, onExpandChange, onOwnedChange, onParticipatingChange }: Props) {
+export default function ChecklistSection({
+  owned: initialOwned, participating: initialParticipating, userId,
+  onExpandChange, onOwnedChange, onParticipatingChange, onCollabProgressChange
+}: Props) {
   const [owned, setOwned] = useState(initialOwned);
   const [participating] = useState(initialParticipating);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -628,7 +615,11 @@ export default function ChecklistSection({ owned: initialOwned, participating: i
       body: JSON.stringify({ action: "getSectionProgress", checklistId: expanded }),
     })
       .then((r) => r.json())
-      .then((data) => setCollabProgress((prev) => ({ ...prev, [expanded]: data })))
+      .then((data) => {
+        const next = { ...collabProgress, [expanded]: data };
+        setCollabProgress(next);
+        onCollabProgressChange?.(next);
+      })
       .catch(() => {})
       .finally(() => setLoadingProgress(null));
   }, [expanded]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -917,8 +908,13 @@ export default function ChecklistSection({ owned: initialOwned, participating: i
   // ─────────────────────────────────────────────────────────────────────────
 
   const allProjects = [
-    ...owned.map((cl) => ({ ...cl, isOwner: true })),
-    ...participating.map((cl) => ({ ...cl, isOwner: false })),
+    ...owned.map((cl) => ({ ...cl, isOwner: true, canEdit: true, canCheck: true })),
+    ...participating.map((cl) => ({
+      ...cl,
+      isOwner: false,
+      canEdit: cl.visibility === "PUBLIC_EDIT",
+      canCheck: true,
+    })),
   ];
   const isEmpty = allProjects.length === 0;
 
@@ -1070,24 +1066,6 @@ export default function ChecklistSection({ owned: initialOwned, participating: i
               {/* Expanded tree */}
               {isOpen && (
                 <div className="px-4 pb-4 border-t border-slate-700 pt-3 space-y-0.5">
-                  {/* Collab overall leaderboard */}
-                  {progress && progress.overall.length > 1 && (
-                    <div className="mb-3 space-y-1 bg-slate-700/30 rounded-xl p-3">
-                      <p className="text-xs text-slate-500 font-medium mb-1.5">Participant progress</p>
-                      {progress.overall.map((p) => {
-                        const ppct = p.total > 0 ? Math.round((p.done / p.total) * 100) : 0;
-                        return (
-                          <div key={p.userId} className="flex items-center gap-2">
-                            <span className="text-xs text-slate-400 w-20 truncate shrink-0">@{p.username}</span>
-                            <div className="flex-1 bg-slate-600 rounded-full h-1.5">
-                              <div className="bg-amber-500/70 h-1.5 rounded-full" style={{ width: `${ppct}%` }} />
-                            </div>
-                            <span className="text-xs text-slate-500 shrink-0 w-16 text-right">{p.done}/{p.total} · {ppct}%</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
                   {loadingProgress === cl.id && (
                     <p className="text-xs text-slate-600 italic mb-2">Loading participant progress…</p>
                   )}
@@ -1099,7 +1077,8 @@ export default function ChecklistSection({ owned: initialOwned, participating: i
                       key={item.id}
                       item={item}
                       checklistId={cl.id}
-                      isOwner={cl.isOwner}
+                      canEdit={cl.canEdit}
+                      canCheck={cl.canCheck}
                       collapsedIds={collapsedIds}
                       onToggleCollapse={toggleCollapse}
                       editingId={editingId}
@@ -1129,7 +1108,7 @@ export default function ChecklistSection({ owned: initialOwned, participating: i
                   ))}
 
                   {/* Add root-level item */}
-                  {cl.isOwner && (
+                  {cl.canEdit && (
                     addingTo?.checklistId === cl.id && addingTo.parentId === null ? (
                       <div className="flex gap-1.5 mt-2">
                         <input
@@ -1144,7 +1123,7 @@ export default function ChecklistSection({ owned: initialOwned, participating: i
                     ) : (
                       <button
                         onClick={() => { setAddingTo({ checklistId: cl.id, parentId: null, depth: 1 }); setNewItemText(""); }}
-                        className="text-xs text-slate-500 hover:text-amber-400 mt-1 transition-colors block"
+                        className="text-xs text-slate-600 hover:text-amber-400 mt-1 transition-colors block"
                       >+ add item</button>
                     )
                   )}

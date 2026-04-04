@@ -124,6 +124,46 @@ function LogEntry({ log, onEdit, onDelete }: {
   );
 }
 
+interface CollabProgress {
+  overall: { userId: string; username: string; done: number; total: number }[];
+}
+
+function Leaderboard({ progress, currentUserId }: { progress: CollabProgress; currentUserId: string }) {
+  const sorted = [...progress.overall].sort((a, b) => {
+    const aPct = a.total > 0 ? a.done / a.total : 0;
+    const bPct = b.total > 0 ? b.done / b.total : 0;
+    return bPct - aPct;
+  });
+
+  return (
+    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+      <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Leaderboard</h3>
+      <div className="space-y-3">
+        {sorted.map((p, i) => {
+          const isMe = p.userId === currentUserId;
+          const pct = p.total > 0 ? Math.round((p.done / p.total) * 100) : 0;
+          return (
+            <div key={p.userId} className={`flex items-center gap-3 ${isMe ? "opacity-100" : "opacity-60"}`}>
+              <span className="text-xs font-mono text-slate-500 w-4">{i + 1}.</span>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between mb-1">
+                  <span className={`text-xs font-medium truncate ${isMe ? "text-amber-400" : "text-slate-300"}`}>
+                    {isMe ? `@${p.username}` : `Learner ${i + 1}`}
+                  </span>
+                  <span className="text-[10px] text-slate-500">{pct}%</span>
+                </div>
+                <div className="w-full bg-slate-800 rounded-full h-1">
+                  <div className={`h-1 rounded-full ${isMe ? "bg-amber-500" : "bg-slate-600"}`} style={{ width: `${pct}%` }} />
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardClient({
   user, streaks, todayLogs: initTodayLogs, allCheckIns: initAllCheckIns,
   username, ownedChecklists: initOwned, participatingChecklists: initParticipating, userId,
@@ -173,6 +213,7 @@ export default function DashboardClient({
   // Lifted state — updated by ChecklistSection callbacks for instant optimistic UI
   const [ownedState, setOwnedState] = useState<ChecklistData[]>(initOwned);
   const [participatingState, setParticipatingState] = useState<ChecklistData[]>(initParticipating);
+  const [collabProgress, setCollabProgress] = useState<Record<string, CollabProgress>>({});
 
   const profileUrl = typeof window !== "undefined" ? `${window.location.origin}/u/${username}` : `/u/${username}`;
   const examDays = user.examDate ? daysUntil(user.examDate) : null;
@@ -198,12 +239,17 @@ export default function DashboardClient({
   ];
 
   const selectedProject = allProjects.find((p) => p.id === expandedProjectId);
+  const selectedProgress = expandedProjectId ? collabProgress[expandedProjectId] : null;
   const isProjectShareable = !!(selectedProject?.slug && selectedProject.visibility !== "PRIVATE");
   const shareUrl = isProjectShareable
     ? (typeof window !== "undefined" ? window.location.origin : "") + `/project/${selectedProject!.slug}`
     : profileUrl;
   const shareLabel = isProjectShareable ? selectedProject!.name : `@${username}`;
   const shareHref = isProjectShareable ? `/project/${selectedProject!.slug}` : `/u/${username}`;
+
+  const leaderboardBlock = selectedProgress && selectedProgress.overall.length > 1 ? (
+    <Leaderboard progress={selectedProgress} currentUserId={userId} />
+  ) : null;
 
   function recalcStreak(logs: CheckIn[]) {
     const { currentStreak: s } = calcStreaks(logs.map((c) => c.date));
@@ -268,6 +314,18 @@ export default function DashboardClient({
     await navigator.clipboard.writeText(shareUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  }
+
+  function handleSectionClick(id: string) {
+    const el = document.querySelector(`[data-item-id="${id}"]`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      // Add a brief highlight effect
+      el.classList.add("ring-2", "ring-amber-500", "ring-offset-2", "ring-offset-slate-900", "rounded");
+      setTimeout(() => {
+        el.classList.remove("ring-2", "ring-amber-500", "ring-offset-2", "ring-offset-slate-900", "rounded");
+      }, 2000);
+    }
   }
 
   // Shared blocks
@@ -407,9 +465,12 @@ export default function DashboardClient({
               onExpandChange={(id) => setExpandedProjectId(id)}
               onOwnedChange={setOwnedState}
               onParticipatingChange={setParticipatingState}
+              onCollabProgressChange={setCollabProgress}
             />
             <ProjectProgress projects={allProjects} expandedId={expandedProjectId}
-              onSelect={(id) => setExpandedProjectId(expandedProjectId === id ? null : id)} />
+              onSelect={(id) => setExpandedProjectId(expandedProjectId === id ? null : id)}
+              onSectionClick={handleSectionClick} />
+            {leaderboardBlock}
             {shareCard}
           </>
         )}
@@ -438,8 +499,8 @@ export default function DashboardClient({
         )}
       </div>
 
-      <div className="hidden lg:grid max-w-[1400px] mx-auto px-4 py-6 grid-cols-[280px_1fr_280px] gap-6 items-start">
-        <aside className="space-y-4 sticky top-[73px]">
+      <div className="hidden lg:grid max-w-[1400px] mx-auto px-4 py-6 grid-cols-[280px_1fr_280px] gap-6 items-start min-h-[calc(100vh-73px)]">
+        <aside className="space-y-4 sticky top-[73px] max-h-[calc(100vh-90px)] overflow-y-auto pb-4 pr-1 scrollbar-hide">
           {streakBadge}
           <MiniCalendar checkIns={allCheckIns} reviewsByDate={reviewsByDate} />
           {reviewedTodayBlock}
@@ -485,9 +546,11 @@ export default function DashboardClient({
           />
         </main>
 
-        <aside className="space-y-4 sticky top-[73px]">
+        <aside className="space-y-4 sticky top-[73px] max-h-[calc(100vh-90px)] overflow-y-auto pb-4 pr-1 scrollbar-hide">
           <ProjectProgress projects={allProjects} expandedId={expandedProjectId}
-            onSelect={(id) => setExpandedProjectId(expandedProjectId === id ? null : id)} />
+            onSelect={(id) => setExpandedProjectId(expandedProjectId === id ? null : id)}
+            onSectionClick={handleSectionClick} />
+          {leaderboardBlock}
           {shareCard}
         </aside>
       </div>

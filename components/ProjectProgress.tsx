@@ -6,6 +6,7 @@ interface Props {
   projects: (ChecklistData & { isOwner: boolean })[];
   expandedId: string | null;
   onSelect: (id: string) => void;
+  onSectionClick?: (sectionId: string) => void;
 }
 
 function countSection(items: TreeItem[]): { done: number; total: number } {
@@ -24,7 +25,7 @@ function countAll(items: TreeItem[]): { done: number; total: number } {
   return countSection(items);
 }
 
-export default function ProjectProgress({ projects, expandedId, onSelect }: Props) {
+export default function ProjectProgress({ projects, expandedId, onSelect, onSectionClick }: Props) {
   const selected = projects.find((p) => p.id === expandedId) ?? null;
   const sections = selected?.items.filter((it) => it.isSection) ?? [];
   const hasUngrouped = selected?.items.some((it) => !it.isSection) ?? false;
@@ -103,9 +104,9 @@ export default function ProjectProgress({ projects, expandedId, onSelect }: Prop
               if (total === 0) return null;
               const pct = Math.round((done / total) * 100);
               return (
-                <div key={section.id}>
+                <div key={section.id} className="cursor-pointer group/section" onClick={() => onSectionClick?.(section.id)}>
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs text-slate-300 font-medium truncate max-w-[140px]" title={section.text}>{section.text}</span>
+                    <span className="text-xs text-slate-300 font-medium truncate max-w-[140px] transition-colors group-hover/section:text-amber-400" title={section.text}>{section.text}</span>
                     <span className="text-xs text-slate-500 shrink-0 ml-1">{pct}%</span>
                   </div>
                   <div className="w-full bg-slate-700 rounded-full h-1.5">
