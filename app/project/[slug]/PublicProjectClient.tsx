@@ -320,6 +320,7 @@ export default function PublicProjectClient({
   }
 
   async function deleteItem(itemId: string) {
+    if (!confirm("Delete this item? Its subtasks will also be removed.")) return;
     setItems((prev) => deleteFromTree(prev, itemId));
     const res = await fetch("/api/checklists", {
       method: "PATCH",
@@ -327,7 +328,6 @@ export default function PublicProjectClient({
       body: JSON.stringify({ action: "deleteItem", itemId }),
     });
     if (!res.ok) {
-      // Revert — reload page as simplest recovery
       window.location.reload();
     }
   }

@@ -13,7 +13,7 @@ interface CheckIn {
 }
 
 interface Props {
-  user: { name: string; username: string; studyingFor: string; examDate: string | null };
+  user: { name: string; username: string; studyingFor: string; examDate: string | null; isAdmin: boolean };
   streaks: { currentStreak: number; longestStreak: number; totalDays: number };
   todayCheckIn: CheckIn | null;
   username: string;
@@ -67,6 +67,11 @@ export default function DashboardClient({ user, streaks, todayCheckIn, username,
       <header className="border-b border-slate-800 px-6 py-4 flex items-center justify-between">
         <Link href="/" className="text-xl font-bold text-amber-400">Streakboard</Link>
         <div className="flex items-center gap-3">
+          {user.isAdmin && (
+            <Link href="/admin" className="text-sm text-amber-500 hover:text-amber-400 transition-colors font-medium">
+              ⚙ Admin
+            </Link>
+          )}
           <Link
             href="/discover"
             className="text-sm text-slate-400 hover:text-slate-200 transition-colors"

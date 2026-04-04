@@ -24,11 +24,13 @@ model User {
   studyingFor         String
   examDate            String?
   isPublic            Boolean                @default(true)
+  isAdmin             Boolean                @default(false)
   createdAt           DateTime               @default(now())
   checkIns            CheckIn[]
   checklists          Checklist[]
   participatingIn     ChecklistParticipant[]
   checklistProgress   ChecklistProgress[]
+  revisions           ChecklistRevision[]
 }
 
 model CheckIn {
@@ -70,6 +72,7 @@ model ChecklistItem {
   order       Int                 @default(0)
   createdAt   DateTime            @default(now())
   progress    ChecklistProgress[]
+  revisions   ChecklistRevision[]
 
   @@index([parentId])
   @@index([checklistId, order])
@@ -96,4 +99,20 @@ model ChecklistProgress {
   doneAt DateTime?
 
   @@unique([itemId, userId])
+}
+
+model ChecklistRevision {
+  id        String        @id @default(cuid())
+  itemId    String
+  item      ChecklistItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime      @default(now())
+
+  @@index([itemId, userId])
+}
+
+model SiteSetting {
+  key   String @id
+  value String
 }

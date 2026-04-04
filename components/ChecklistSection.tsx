@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import ChecklistImport from "./ChecklistImport";
 import type { TemplateMetadata } from "@/app/api/templates/route";
@@ -8,6 +8,7 @@ import type { TemplateMetadata } from "@/app/api/templates/route";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Progress = { done: boolean };
+type Revision = { createdAt: string };
 
 export interface TreeItem {
   id: string;
@@ -16,6 +17,7 @@ export interface TreeItem {
   isSection: boolean;
   depth: number;
   progress: Progress[];
+  revisions: Revision[];
   children?: TreeItem[];
 }
 
@@ -26,9 +28,20 @@ export interface ChecklistData {
   description?: string | null;
   visibility: "PRIVATE" | "PUBLIC_TEMPLATE" | "PUBLIC_COLLAB" | "PUBLIC_EDIT";
   slug?: string | null;
-  items: TreeItem[];       // root items only (parentId=null)
+  items: TreeItem[];
   participants: { user: { id: string; name: string; username: string } }[];
   user?: { name: string; username: string };
+}
+
+interface SectionProgressParticipant {
+  userId: string; name: string; username: string; done: number; total: number;
+}
+interface SectionProgressData {
+  sectionId: string; sectionText: string; participants: SectionProgressParticipant[];
+}
+interface CollabProgress {
+  sections: SectionProgressData[];
+  overall: SectionProgressParticipant[];
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -39,14 +52,12 @@ const VIS_LABEL: Record<string, string> = {
   PUBLIC_COLLAB: "👥 Collab",
   PUBLIC_EDIT: "✏️ Open Edit",
 };
-
 const VIS_DESCRIPTIONS: Record<string, string> = {
   PRIVATE: "Only you can see and edit this project.",
   PUBLIC_TEMPLATE: "Anyone can view and copy to their own account.",
   PUBLIC_COLLAB: "Anyone can join and track their own progress.",
   PUBLIC_EDIT: "Anyone can join, add and edit items.",
 };
-
 const CATEGORY_COLOR: Record<string, string> = {
   Medicine: "bg-emerald-500/20 text-emerald-400",
   Technology: "bg-blue-500/20 text-blue-400",
@@ -60,41 +71,99 @@ function countCheckable(items: TreeItem[]): { done: number; total: number } {
   let done = 0, total = 0;
   for (const it of items) {
     if (!it.isSection) { total++; if (it.progress[0]?.done) done++; }
-    if (it.children?.length) {
-      const sub = countCheckable(it.children);
-      done += sub.done; total += sub.total;
-    }
+    if (it.children?.length) { const s = countCheckable(it.children); done += s.done; total += s.total; }
   }
   return { done, total };
 }
 
-function flattenSiblings(items: TreeItem[]): TreeItem[] {
-  return items;
+function findItem(items: TreeItem[], id: string): TreeItem | null {
+  for (const it of items) {
+    if (it.id === id) return it;
+    if (it.children?.length) { const f = findItem(it.children, id); if (f) return f; }
+  }
+  return null;
+}
+
+function toggleItemInTree(items: TreeItem[], itemId: string, done: boolean): TreeItem[] {
+  return items.map((it) => {
+    if (it.id === itemId) return { ...it, progress: [{ done }] };
+    if (it.children?.length) return { ...it, children: toggleItemInTree(it.children, itemId, done) };
+    return it;
+  });
+}
+
+function addRevisionInTree(items: TreeItem[], itemId: string): TreeItem[] {
+  return items.map((it) => {
+    if (it.id === itemId) return { ...it, revisions: [{ createdAt: new Date().toISOString() }, ...it.revisions] };
+    if (it.children?.length) return { ...it, children: addRevisionInTree(it.children, itemId) };
+    return it;
+  });
+}
+
+function removeItemFromTree(items: TreeItem[], itemId: string): TreeItem[] {
+  return items
+    .filter((it) => it.id !== itemId)
+    .map((it) => it.children?.length ? { ...it, children: removeItemFromTree(it.children, itemId) } : it);
+}
+
+function addItemToTree(items: TreeItem[], parentId: string | null, newItem: TreeItem): TreeItem[] {
+  if (parentId === null) return [...items, newItem];
+  return items.map((it) => {
+    if (it.id === parentId) return { ...it, children: [...(it.children ?? []), newItem] };
+    if (it.children?.length) return { ...it, children: addItemToTree(it.children, parentId, newItem) };
+    return it;
+  });
+}
+
+function renameInTree(items: TreeItem[], itemId: string, text: string): TreeItem[] {
+  return items.map((it) => {
+    if (it.id === itemId) return { ...it, text };
+    if (it.children?.length) return { ...it, children: renameInTree(it.children, itemId, text) };
+    return it;
+  });
+}
+
+function normaliseTreeItem(raw: Record<string, unknown>, depth = 0): TreeItem {
+  return {
+    id: raw.id as string,
+    text: raw.text as string,
+    order: (raw.order as number) ?? 0,
+    isSection: (raw.isSection as boolean) ?? false,
+    depth: (raw.depth as number) ?? depth,
+    progress: (raw.progress as Progress[]) ?? [],
+    revisions: (raw.revisions as Revision[]) ?? [],
+    children: ((raw.children as Record<string, unknown>[]) ?? []).map((c) => normaliseTreeItem(c, depth + 1)),
+  };
+}
+
+function normaliseChecklist(raw: Record<string, unknown>): ChecklistData {
+  return {
+    id: raw.id as string,
+    userId: raw.userId as string,
+    name: raw.name as string,
+    description: raw.description as string | null | undefined,
+    visibility: (raw.visibility as ChecklistData["visibility"]) ?? "PRIVATE",
+    slug: raw.slug as string | null | undefined,
+    participants: (raw.participants as ChecklistData["participants"]) ?? [],
+    user: raw.user as ChecklistData["user"],
+    items: ((raw.items as Record<string, unknown>[]) ?? []).map((i) => normaliseTreeItem(i)),
+  };
 }
 
 // ─── Visibility Modal ─────────────────────────────────────────────────────────
 
-function VisibilityModal({
-  current, name, onSave, onClose,
-}: {
-  current: ChecklistData["visibility"];
-  name: string;
-  onSave: (v: ChecklistData["visibility"]) => Promise<void>;
-  onClose: () => void;
+function VisibilityModal({ current, name, onSave, onClose }: {
+  current: ChecklistData["visibility"]; name: string;
+  onSave: (v: ChecklistData["visibility"]) => Promise<void>; onClose: () => void;
 }) {
   const ALL: ChecklistData["visibility"][] = ["PRIVATE", "PUBLIC_TEMPLATE", "PUBLIC_COLLAB", "PUBLIC_EDIT"];
   const [selected, setSelected] = useState<ChecklistData["visibility"]>(current);
   const [saving, setSaving] = useState(false);
-
   const toPrivate = selected === "PRIVATE" && current !== "PRIVATE";
   const fromPrivate = selected !== "PRIVATE" && current === "PRIVATE";
   const changed = selected !== current;
 
-  async function handleSave() {
-    setSaving(true);
-    await onSave(selected);
-    setSaving(false);
-  }
+  async function handleSave() { setSaving(true); await onSave(selected); setSaving(false); }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
@@ -103,7 +172,6 @@ function VisibilityModal({
           <h3 className="font-semibold text-slate-100 text-sm">Project settings</h3>
           <p className="text-slate-500 text-xs mt-0.5 truncate">{name}</p>
         </div>
-
         <div className="space-y-2">
           {ALL.map((v) => (
             <label key={v} className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${selected === v ? "border-amber-500 bg-amber-500/10" : "border-slate-700 hover:border-slate-600"}`}>
@@ -115,24 +183,14 @@ function VisibilityModal({
             </label>
           ))}
         </div>
-
         {(toPrivate || fromPrivate) && (
           <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 text-xs text-amber-300">
-            ⚠️ {toPrivate
-              ? "Switching to Private — current participants will lose access to this project."
-              : "Switching to Public — this project will be visible to everyone."}
+            ⚠️ {toPrivate ? "Switching to Private — current participants will lose access." : "Switching to Public — this project will be visible to everyone."}
           </div>
         )}
-
         <div className="flex gap-2 pt-1">
-          <button onClick={onClose} className="flex-1 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm rounded-xl transition-colors">
-            Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={!changed || saving}
-            className="flex-1 py-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-40 text-slate-950 text-sm font-semibold rounded-xl transition-colors"
-          >
+          <button onClick={onClose} className="flex-1 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm rounded-xl transition-colors">Cancel</button>
+          <button onClick={handleSave} disabled={!changed || saving} className="flex-1 py-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-40 text-slate-950 text-sm font-semibold rounded-xl transition-colors">
             {saving ? "Saving…" : "Save changes"}
           </button>
         </div>
@@ -146,75 +204,146 @@ function VisibilityModal({
 function TemplatePreview({ filename }: { filename: string }) {
   const [lines, setLines] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
-
   useEffect(() => {
-    fetch(`/templates/${filename}`)
-      .then((r) => r.text())
-      .then((text) => {
-        const items = text
-          .split("\n")
-          .filter((l) => /^(?:[-*]|\d+\.)\s+(?:\[[ xX]\]\s+)?(.+)/.test(l))
-          .slice(0, 8)
-          .map((l) => l.replace(/^(?:[-*]|\d+\.)\s+(?:\[[ xX\s]\]\s+)?/, "").trim());
-        setLines(items);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
+    fetch(`/templates/${filename}`).then((r) => r.text()).then((text) => {
+      const items = text.split("\n").filter((l) => /^(?:[-*]|\d+\.)\s+(?:\[[ xX]\]\s+)?(.+)/.test(l))
+        .slice(0, 8).map((l) => l.replace(/^(?:[-*]|\d+\.)\s+(?:\[[ xX\s]\]\s+)?/, "").trim());
+      setLines(items); setLoading(false);
+    }).catch(() => setLoading(false));
   }, [filename]);
-
   if (loading) return <p className="text-xs text-slate-500 mt-2">Loading preview…</p>;
   return (
     <ul className="mt-2 space-y-1 pl-1">
-      {lines.map((l, i) => (
-        <li key={i} className="text-xs text-slate-400 flex items-center gap-1.5">
-          <span className="w-3 h-3 border border-slate-600 rounded shrink-0" />{l}
-        </li>
-      ))}
+      {lines.map((l, i) => <li key={i} className="text-xs text-slate-400 flex items-center gap-1.5"><span className="w-3 h-3 border border-slate-600 rounded shrink-0" />{l}</li>)}
       <li className="text-xs text-slate-600 italic">…and more</li>
     </ul>
   );
 }
 
+// ─── Revision Tooltip ─────────────────────────────────────────────────────────
+
+function RevisionBadge({ revisions }: { revisions: Revision[] }) {
+  const [show, setShow] = useState(false);
+  if (!revisions.length) return null;
+  return (
+    <span className="relative" onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)}>
+      <span className="text-xs text-amber-500/70 cursor-default select-none">×{revisions.length}</span>
+      {show && (
+        <div className="absolute bottom-full left-0 mb-1 z-10 bg-slate-800 border border-slate-700 rounded-lg p-2 text-xs text-slate-300 whitespace-nowrap shadow-xl">
+          <p className="font-medium text-amber-400 mb-1">Reviewed {revisions.length}×</p>
+          {revisions.slice(0, 6).map((r, i) => (
+            <p key={i} className="text-slate-400">{new Date(r.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</p>
+          ))}
+          {revisions.length > 6 && <p className="text-slate-600">+{revisions.length - 6} more</p>}
+        </div>
+      )}
+    </span>
+  );
+}
+
 // ─── Tree Item Renderer ───────────────────────────────────────────────────────
 
-function ItemNode({
-  item, checklistId, isOwner,
-  onToggle, onDelete, onAddChild,
-  dragState, onDragStart, onDragOver, onDrop, onDragEnd,
-}: {
+interface ItemNodeProps {
   item: TreeItem;
   checklistId: string;
   isOwner: boolean;
-  onToggle: (itemId: string) => void;
+  collapsedIds: Set<string>;
+  onToggleCollapse: (id: string) => void;
+  editingId: string | null;
+  editingText: string;
+  onEditStart: (id: string, text: string) => void;
+  onEditChange: (text: string) => void;
+  onEditSave: (checklistId: string, itemId: string) => void;
+  onEditCancel: () => void;
+  onCheck: (checklistId: string, itemId: string) => void;
+  onUncheck: (checklistId: string, itemId: string) => void;
   onDelete: (checklistId: string, itemId: string) => void;
   onAddChild: (parentId: string, depth: number) => void;
-  dragState: { dragId: string | null; overId: string | null };
+  addingTo: { checklistId: string; parentId: string | null; depth: number } | null;
+  newItemText: string;
+  onNewItemChange: (v: string) => void;
+  onAddSubmit: (checklistId: string) => void;
+  onAddCancel: () => void;
+  dragOverRef: React.MutableRefObject<string | null>;
   onDragStart: (id: string) => void;
   onDragOver: (e: React.DragEvent, id: string) => void;
   onDrop: (targetId: string, parentId: string | null) => void;
   onDragEnd: () => void;
-}) {
-  const checked = item.progress[0]?.done ?? false;
-  const isDragging = dragState.dragId === item.id;
-  const isOver = dragState.overId === item.id;
+  dragId: string | null;
+  collabProgress?: CollabProgress | null;
+}
 
-  const indent = item.depth === 0 ? "" : item.depth === 1 ? "ml-0" : "ml-4";
+function ItemNode({
+  item, checklistId, isOwner,
+  collapsedIds, onToggleCollapse,
+  editingId, editingText, onEditStart, onEditChange, onEditSave, onEditCancel,
+  onCheck, onUncheck, onDelete, onAddChild,
+  addingTo, newItemText, onNewItemChange, onAddSubmit, onAddCancel,
+  dragOverRef, onDragStart, onDragOver, onDrop, onDragEnd, dragId,
+  collabProgress,
+}: ItemNodeProps) {
+  const checked = item.progress[0]?.done ?? false;
+  const isDragging = dragId === item.id;
+  const isCollapsed = collapsedIds.has(item.id);
+  const hasChildren = (item.children?.length ?? 0) > 0;
+  const isEditing = editingId === item.id;
+
+  const sectionStats = item.isSection ? countCheckable(item.children ?? []) : null;
+  const sectionCollab = item.isSection ? collabProgress?.sections.find(s => s.sectionId === item.id) : null;
+
+  const commonProps = {
+    draggable: isOwner,
+    onDragStart: () => onDragStart(item.id),
+    onDragOver: (e: React.DragEvent) => onDragOver(e, item.id),
+    onDrop: () => onDrop(item.id, null),
+    onDragEnd,
+  };
 
   if (item.isSection) {
     return (
-      <div className={`${indent} ${isOver ? "border-t-2 border-amber-500" : ""}`}>
+      <div data-item-id={item.id} className={`mt-3 first:mt-0`}>
         <div
-          className={`flex items-center gap-2 py-2 px-1 group cursor-grab active:cursor-grabbing ${isDragging ? "opacity-40" : ""}`}
-          draggable={isOwner}
-          onDragStart={() => onDragStart(item.id)}
-          onDragOver={(e) => onDragOver(e, item.id)}
-          onDrop={() => onDrop(item.id, null)}
-          onDragEnd={onDragEnd}
+          className={`flex items-center gap-1.5 py-1.5 px-1 group ${isDragging ? "opacity-40" : ""}`}
+          {...commonProps}
         >
-          {isOwner && <span className="text-slate-600 text-xs opacity-0 group-hover:opacity-100 cursor-grab">⠿</span>}
-          <span className="flex-1 text-xs font-bold text-amber-400 uppercase tracking-wider border-b border-slate-700 pb-1">
-            {item.text}
-          </span>
+          {/* Collapse toggle */}
+          <button
+            onClick={() => onToggleCollapse(item.id)}
+            className="text-slate-600 hover:text-slate-400 text-xs w-4 shrink-0 transition-colors"
+          >
+            {isCollapsed ? "▶" : "▼"}
+          </button>
+
+          {isOwner && <span className="text-slate-600 text-xs opacity-0 group-hover:opacity-100 cursor-grab shrink-0">⠿</span>}
+
+          {/* Section text — double-click to edit */}
+          {isEditing ? (
+            <input
+              autoFocus
+              value={editingText}
+              onChange={(e) => onEditChange(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") { e.preventDefault(); onEditSave(checklistId, item.id); }
+                if (e.key === "Escape") onEditCancel();
+              }}
+              onBlur={() => onEditSave(checklistId, item.id)}
+              className="flex-1 bg-slate-700 border border-amber-500 rounded px-2 py-0.5 text-xs font-bold text-amber-400 uppercase tracking-wider focus:outline-none"
+            />
+          ) : (
+            <span
+              className="flex-1 text-xs font-bold text-amber-400 uppercase tracking-wider border-b border-slate-700 pb-0.5 cursor-text"
+              onDoubleClick={() => isOwner && onEditStart(item.id, item.text)}
+              title={isOwner ? "Double-click to edit" : undefined}
+            >
+              {item.text}
+            </span>
+          )}
+
+          {/* Section progress */}
+          {sectionStats && sectionStats.total > 0 && (
+            <span className="text-xs text-slate-500 shrink-0 font-mono">{sectionStats.done}/{sectionStats.total}</span>
+          )}
+
           {isOwner && (
             <button
               onClick={() => onDelete(checklistId, item.id)}
@@ -222,42 +351,138 @@ function ItemNode({
             >✕</button>
           )}
         </div>
-        {item.children?.map((child) => (
-          <ItemNode key={child.id} item={child} checklistId={checklistId} isOwner={isOwner}
-            onToggle={onToggle} onDelete={onDelete} onAddChild={onAddChild}
-            dragState={dragState} onDragStart={onDragStart} onDragOver={onDragOver}
-            onDrop={(tid) => onDrop(tid, item.id)} onDragEnd={onDragEnd} />
-        ))}
-        {isOwner && (
-          <button
-            onClick={() => onAddChild(item.id, 1)}
-            className="ml-4 text-xs text-slate-600 hover:text-amber-400 transition-colors py-1"
-          >+ add task</button>
+
+        {/* Section mini progress bar */}
+        {sectionStats && sectionStats.total > 0 && (
+          <div className="ml-6 mb-1">
+            <div className="w-full bg-slate-700/50 rounded-full h-0.5">
+              <div
+                className="bg-amber-500/60 h-0.5 rounded-full transition-all"
+                style={{ width: `${Math.round((sectionStats.done / sectionStats.total) * 100)}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Collab progress per section */}
+        {sectionCollab && sectionCollab.participants.length > 1 && (
+          <div className="ml-6 mb-2 space-y-0.5">
+            {sectionCollab.participants.map((p) => {
+              const pct = p.total > 0 ? Math.round((p.done / p.total) * 100) : 0;
+              return (
+                <div key={p.userId} className="flex items-center gap-2">
+                  <span className="text-xs text-slate-500 w-20 truncate shrink-0">@{p.username}</span>
+                  <div className="flex-1 bg-slate-700 rounded-full h-1">
+                    <div className="bg-amber-500/50 h-1 rounded-full" style={{ width: `${pct}%` }} />
+                  </div>
+                  <span className="text-xs text-slate-600 shrink-0 w-10 text-right">{p.done}/{p.total}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Children */}
+        {!isCollapsed && (
+          <div className="ml-4 space-y-0.5 border-l border-slate-700/50 pl-3">
+            {item.children?.map((child) => (
+              <ItemNode key={child.id} item={child} checklistId={checklistId} isOwner={isOwner}
+                collapsedIds={collapsedIds} onToggleCollapse={onToggleCollapse}
+                editingId={editingId} editingText={editingText} onEditStart={onEditStart} onEditChange={onEditChange} onEditSave={onEditSave} onEditCancel={onEditCancel}
+                onCheck={onCheck} onUncheck={onUncheck} onDelete={onDelete} onAddChild={onAddChild}
+                addingTo={addingTo} newItemText={newItemText} onNewItemChange={onNewItemChange} onAddSubmit={onAddSubmit} onAddCancel={onAddCancel}
+                dragOverRef={dragOverRef} onDragStart={onDragStart}
+                onDragOver={onDragOver} onDrop={(tid) => onDrop(tid, item.id)} onDragEnd={onDragEnd} dragId={dragId}
+                collabProgress={collabProgress}
+              />
+            ))}
+
+            {/* Inline add input — section children */}
+            {addingTo?.checklistId === checklistId && addingTo.parentId === item.id ? (
+              <div className="flex gap-1.5 mt-1.5">
+                <input
+                  autoFocus value={newItemText} onChange={(e) => onNewItemChange(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); onAddSubmit(checklistId); } if (e.key === "Escape") onAddCancel(); }}
+                  placeholder="New task…"
+                  className="flex-1 bg-slate-700 border border-slate-600 rounded-lg px-2 py-1 text-sm text-slate-100 placeholder-slate-400 focus:outline-none focus:border-amber-500"
+                />
+                <button onClick={() => onAddSubmit(checklistId)} className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-semibold rounded-lg">Add</button>
+                <button onClick={onAddCancel} className="text-slate-500 text-xs px-1">✕</button>
+              </div>
+            ) : isOwner ? (
+              <button onClick={() => onAddChild(item.id, 1)} className="text-xs text-slate-600 hover:text-amber-400 transition-colors py-0.5">+ add task</button>
+            ) : null}
+          </div>
+        )}
+        {isCollapsed && hasChildren && (
+          <p className="ml-6 text-xs text-slate-600 italic">{item.children!.length} task{item.children!.length !== 1 ? "s" : ""} hidden</p>
         )}
       </div>
     );
   }
 
+  // ── Task / Subtask ────────────────────────────────────────────────────────
+  const indent = item.depth === 2 ? "ml-4" : "";
+
   return (
-    <div className={`${indent} ${isOver ? "border-t-2 border-amber-500" : ""}`}>
+    <div data-item-id={item.id} className={indent}>
       <div
-        className={`flex items-center gap-2 group py-1 ${isDragging ? "opacity-40" : ""}`}
-        draggable={isOwner}
-        onDragStart={() => onDragStart(item.id)}
-        onDragOver={(e) => onDragOver(e, item.id)}
+        className={`flex items-center gap-1.5 group py-0.5 ${isDragging ? "opacity-40" : ""}`}
+        {...commonProps}
         onDrop={() => onDrop(item.id, null)}
-        onDragEnd={onDragEnd}
       >
+        {/* Collapse (only tasks with children) */}
+        {hasChildren ? (
+          <button onClick={() => onToggleCollapse(item.id)} className="text-slate-600 hover:text-slate-400 text-xs w-4 shrink-0">
+            {isCollapsed ? "▶" : "▼"}
+          </button>
+        ) : (
+          <span className="w-4 shrink-0" />
+        )}
+
         {isOwner && <span className="text-slate-600 text-xs opacity-0 group-hover:opacity-100 cursor-grab shrink-0">⠿</span>}
+
+        {/* Checkbox — click logs revision */}
         <input
           type="checkbox"
           checked={checked}
-          onChange={() => onToggle(item.id)}
+          onChange={() => onCheck(checklistId, item.id)}
           className="w-4 h-4 rounded accent-amber-500 cursor-pointer shrink-0"
         />
-        <span className={`flex-1 text-sm leading-snug ${checked ? "line-through text-slate-500" : item.depth === 2 ? "text-slate-400" : "text-slate-300"}`}>
-          {item.text}
-        </span>
+
+        {/* Text — double-click to edit */}
+        {isEditing ? (
+          <input
+            autoFocus value={editingText} onChange={(e) => onEditChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") { e.preventDefault(); onEditSave(checklistId, item.id); }
+              if (e.key === "Escape") onEditCancel();
+            }}
+            onBlur={() => onEditSave(checklistId, item.id)}
+            className="flex-1 bg-slate-700 border border-amber-500 rounded px-2 py-0.5 text-sm text-slate-100 focus:outline-none"
+          />
+        ) : (
+          <span
+            className={`flex-1 text-sm leading-snug cursor-text ${checked ? "line-through text-slate-500" : item.depth === 2 ? "text-slate-400" : "text-slate-300"}`}
+            onDoubleClick={() => isOwner && onEditStart(item.id, item.text)}
+            title={isOwner ? "Double-click to edit" : undefined}
+          >
+            {item.text}
+          </span>
+        )}
+
+        {/* Revision badge */}
+        {checked && <RevisionBadge revisions={item.revisions} />}
+
+        {/* Uncheck button (only for done items) */}
+        {checked && (
+          <button
+            onClick={() => onUncheck(checklistId, item.id)}
+            title="Mark as not done"
+            className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-slate-300 text-xs transition-all shrink-0"
+          >↩</button>
+        )}
+
         {isOwner && (
           <button
             onClick={() => onDelete(checklistId, item.id)}
@@ -265,18 +490,41 @@ function ItemNode({
           >✕</button>
         )}
       </div>
-      {/* Subtasks */}
-      {item.depth < 2 && item.children?.map((child) => (
-        <ItemNode key={child.id} item={child} checklistId={checklistId} isOwner={isOwner}
-          onToggle={onToggle} onDelete={onDelete} onAddChild={onAddChild}
-          dragState={dragState} onDragStart={onDragStart} onDragOver={onDragOver}
-          onDrop={(tid) => onDrop(tid, item.id)} onDragEnd={onDragEnd} />
-      ))}
-      {isOwner && item.depth < 2 && (
-        <button
-          onClick={() => onAddChild(item.id, item.depth + 1)}
-          className="ml-8 text-xs text-slate-600 hover:text-amber-400 transition-colors"
-        >+ subtask</button>
+
+      {/* Subtask children */}
+      {!isCollapsed && item.depth < 2 && (
+        <div className="ml-9 space-y-0.5">
+          {item.children?.map((child) => (
+            <ItemNode key={child.id} item={child} checklistId={checklistId} isOwner={isOwner}
+              collapsedIds={collapsedIds} onToggleCollapse={onToggleCollapse}
+              editingId={editingId} editingText={editingText} onEditStart={onEditStart} onEditChange={onEditChange} onEditSave={onEditSave} onEditCancel={onEditCancel}
+              onCheck={onCheck} onUncheck={onUncheck} onDelete={onDelete} onAddChild={onAddChild}
+              addingTo={addingTo} newItemText={newItemText} onNewItemChange={onNewItemChange} onAddSubmit={onAddSubmit} onAddCancel={onAddCancel}
+              dragOverRef={dragOverRef} onDragStart={onDragStart}
+              onDragOver={onDragOver} onDrop={(tid) => onDrop(tid, item.id)} onDragEnd={onDragEnd} dragId={dragId}
+              collabProgress={collabProgress}
+            />
+          ))}
+
+          {/* Inline add — task children */}
+          {addingTo?.checklistId === checklistId && addingTo.parentId === item.id ? (
+            <div className="flex gap-1.5 mt-1">
+              <input
+                autoFocus value={newItemText} onChange={(e) => onNewItemChange(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); onAddSubmit(checklistId); } if (e.key === "Escape") onAddCancel(); }}
+                placeholder="New subtask…"
+                className="flex-1 bg-slate-700 border border-slate-600 rounded-lg px-2 py-1 text-sm text-slate-100 placeholder-slate-400 focus:outline-none focus:border-amber-500"
+              />
+              <button onClick={() => onAddSubmit(checklistId)} className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-semibold rounded-lg">Add</button>
+              <button onClick={onAddCancel} className="text-slate-500 text-xs px-1">✕</button>
+            </div>
+          ) : isOwner ? (
+            <button onClick={() => onAddChild(item.id, item.depth + 1)} className="text-xs text-slate-600 hover:text-amber-400 transition-colors">+ subtask</button>
+          ) : null}
+        </div>
+      )}
+      {isCollapsed && hasChildren && (
+        <p className="ml-9 text-xs text-slate-600 italic">{item.children!.length} subtask{item.children!.length !== 1 ? "s" : ""} hidden</p>
       )}
     </div>
   );
@@ -304,15 +552,50 @@ export default function ChecklistSection({ owned: initialOwned, participating: i
   const [addingTo, setAddingTo] = useState<{ checklistId: string; parentId: string | null; depth: number } | null>(null);
   const [newItemText, setNewItemText] = useState("");
   const [visModal, setVisModal] = useState<ChecklistData | null>(null);
-  const [dragState, setDragState] = useState<{ dragId: string | null; overId: string | null }>({ dragId: null, overId: null });
+
+  // Collapse / Edit
+  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState("");
+
+  // Editing project title
+  const [editingTitleId, setEditingTitleId] = useState<string | null>(null);
+  const [editingTitleText, setEditingTitleText] = useState("");
+
+  // Drag — use ref for overId to avoid re-renders on every mouse move
+  const [dragId, setDragId] = useState<string | null>(null);
+  const dragOverRef = useRef<string | null>(null);
   const dragChecklistId = useRef<string | null>(null);
 
-  // Load templates on demand
+  // Collab progress (lazy loaded per checklist)
+  const [collabProgress, setCollabProgress] = useState<Record<string, CollabProgress>>({});
+  const [loadingProgress, setLoadingProgress] = useState<string | null>(null);
+
   useEffect(() => {
     if (newMode === "template" && templates.length === 0) {
       fetch("/api/templates").then((r) => r.json()).then(setTemplates).catch(() => {});
     }
   }, [newMode, templates.length]);
+
+  // Load collab progress when a collab checklist is expanded
+  useEffect(() => {
+    if (!expanded) return;
+    const cl = [...owned, ...participating].find((c) => c.id === expanded);
+    if (!cl) return;
+    if (cl.visibility !== "PUBLIC_COLLAB" && cl.visibility !== "PUBLIC_EDIT") return;
+    if (collabProgress[expanded] || loadingProgress === expanded) return;
+
+    setLoadingProgress(expanded);
+    fetch("/api/checklists", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "getSectionProgress", checklistId: expanded }),
+    })
+      .then((r) => r.json())
+      .then((data) => setCollabProgress((prev) => ({ ...prev, [expanded]: data })))
+      .catch(() => {})
+      .finally(() => setLoadingProgress(null));
+  }, [expanded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function patchOwned(id: string, updater: (cl: ChecklistData) => ChecklistData) {
     setOwned((prev) => prev.map((cl) => (cl.id === id ? updater(cl) : cl)));
@@ -322,48 +605,65 @@ export default function ChecklistSection({ owned: initialOwned, participating: i
     setNewMode((prev) => prev === mode ? "none" : mode);
   }
 
-  // ── Toggle progress ──────────────────────────────────────────────────────
-  function toggleItemInTree(items: TreeItem[], itemId: string, done: boolean): TreeItem[] {
-    return items.map((it) => {
-      if (it.id === itemId) return { ...it, progress: [{ done }] };
-      if (it.children?.length) return { ...it, children: toggleItemInTree(it.children, itemId, done) };
-      return it;
+  // ── Toggle collapse ──────────────────────────────────────────────────────
+  function toggleCollapse(id: string) {
+    setCollapsedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
     });
   }
 
-  async function toggleItem(checklistId: string, itemId: string) {
-    // Optimistic update
-    const cl = [...owned, ...participating].find((c) => c.id === checklistId);
-    const currentDone = findItem(cl?.items ?? [], itemId)?.progress[0]?.done ?? false;
-    patchOwned(checklistId, (c) => ({ ...c, items: toggleItemInTree(c.items, itemId, !currentDone) }));
+  // ── Inline edit (item text) ──────────────────────────────────────────────
+  function startEdit(id: string, text: string) { setEditingId(id); setEditingText(text); }
+  function cancelEdit() { setEditingId(null); setEditingText(""); }
 
+  async function saveEdit(checklistId: string, itemId: string) {
+    const text = editingText.trim();
+    setEditingId(null);
+    if (!text) return;
     const res = await fetch("/api/checklists", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "toggleProgress", itemId }),
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "renameItem", itemId, text }),
     });
-    if (!res.ok) patchOwned(checklistId, (c) => ({ ...c, items: toggleItemInTree(c.items, itemId, currentDone) }));
+    if (res.ok) patchOwned(checklistId, (c) => ({ ...c, items: renameInTree(c.items, itemId, text) }));
   }
 
-  function findItem(items: TreeItem[], id: string): TreeItem | null {
-    for (const it of items) {
-      if (it.id === id) return it;
-      if (it.children?.length) { const f = findItem(it.children, id); if (f) return f; }
+  // ── Check item (logs revision) ───────────────────────────────────────────
+  async function checkItem(checklistId: string, itemId: string) {
+    // Optimistic: mark done + add revision
+    patchOwned(checklistId, (c) => ({
+      ...c,
+      items: addRevisionInTree(toggleItemInTree(c.items, itemId, true), itemId),
+    }));
+    const res = await fetch("/api/checklists", {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "checkItem", itemId }),
+    });
+    if (!res.ok) {
+      // Revert
+      patchOwned(checklistId, (c) => ({
+        ...c,
+        items: toggleItemInTree(c.items, itemId, false),
+      }));
     }
-    return null;
+  }
+
+  // ── Uncheck item ─────────────────────────────────────────────────────────
+  async function uncheckItem(checklistId: string, itemId: string) {
+    patchOwned(checklistId, (c) => ({ ...c, items: toggleItemInTree(c.items, itemId, false) }));
+    const res = await fetch("/api/checklists", {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "uncheckItem", itemId }),
+    });
+    if (!res.ok) patchOwned(checklistId, (c) => ({ ...c, items: toggleItemInTree(c.items, itemId, true) }));
   }
 
   // ── Delete item ──────────────────────────────────────────────────────────
-  function removeItemFromTree(items: TreeItem[], itemId: string): TreeItem[] {
-    return items
-      .filter((it) => it.id !== itemId)
-      .map((it) => it.children?.length ? { ...it, children: removeItemFromTree(it.children, itemId) } : it);
-  }
-
   async function deleteItem(checklistId: string, itemId: string) {
+    if (!confirm("Delete this item? Its subtasks will also be removed.")) return;
     const res = await fetch("/api/checklists", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      method: "PATCH", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "deleteItem", itemId }),
     });
     if (res.ok) patchOwned(checklistId, (c) => ({ ...c, items: removeItemFromTree(c.items, itemId) }));
@@ -380,26 +680,30 @@ export default function ChecklistSection({ owned: initialOwned, participating: i
   }
 
   // ── Add item ─────────────────────────────────────────────────────────────
-  function addItemToTree(items: TreeItem[], parentId: string | null, newItem: TreeItem): TreeItem[] {
-    if (parentId === null) return [...items, newItem];
-    return items.map((it) => {
-      if (it.id === parentId) return { ...it, children: [...(it.children ?? []), newItem] };
-      if (it.children?.length) return { ...it, children: addItemToTree(it.children, parentId, newItem) };
-      return it;
-    });
-  }
-
   async function submitAddItem(checklistId: string) {
     if (!newItemText.trim() || !addingTo) return;
     const res = await fetch("/api/checklists", {
       method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "addItem", checklistId, text: newItemText, parentId: addingTo.parentId, depth: addingTo.depth }),
+      body: JSON.stringify({ action: "addItem", checklistId, text: newItemText.trim(), parentId: addingTo.parentId, depth: addingTo.depth }),
     });
     if (res.ok) {
-      const item: TreeItem = await res.json();
-      patchOwned(checklistId, (c) => ({ ...c, items: addItemToTree(c.items, addingTo.parentId, { ...item, children: [], progress: [] }) }));
+      const raw = await res.json();
+      const newItem: TreeItem = { ...raw, progress: [], revisions: [], children: [] };
+      patchOwned(checklistId, (c) => ({ ...c, items: addItemToTree(c.items, addingTo.parentId, newItem) }));
       setNewItemText(""); setAddingTo(null);
     }
+  }
+
+  // ── Rename project title ─────────────────────────────────────────────────
+  async function saveTitleEdit(checklistId: string) {
+    const name = editingTitleText.trim();
+    setEditingTitleId(null);
+    if (!name) return;
+    const res = await fetch("/api/checklists", {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "renameChecklist", checklistId, name }),
+    });
+    if (res.ok) patchOwned(checklistId, (c) => ({ ...c, name }));
   }
 
   // ── Create blank project ─────────────────────────────────────────────────
@@ -411,39 +715,34 @@ export default function ChecklistSection({ owned: initialOwned, participating: i
       body: JSON.stringify({ name: newName, description: newDesc }),
     });
     if (res.ok) {
-      const cl = await res.json();
-      setOwned((prev) => [{ ...cl, participants: [] }, ...prev]);
+      const raw = await res.json();
+      setOwned((prev) => [normaliseChecklist(raw), ...prev]);
       setNewName(""); setNewDesc(""); setNewMode("none");
     }
   }
 
   // ── Use template ─────────────────────────────────────────────────────────
   async function useTemplate(tmpl: TemplateMetadata) {
-    setUsingTemplate(tmpl.id);
-    setTemplateError("");
+    setUsingTemplate(tmpl.id); setTemplateError("");
     try {
       const mdRes = await fetch(`/templates/${tmpl.filename}`);
       if (!mdRes.ok) throw new Error("Template file not found");
       const text = await mdRes.text();
       const file = new File([text], tmpl.filename, { type: "text/markdown" });
-      const form = new FormData();
-      form.append("file", file);
+      const form = new FormData(); form.append("file", file);
       const res = await fetch("/api/checklists/import", { method: "POST", body: form });
       const isJson = res.headers.get("content-type")?.includes("application/json");
       const data = isJson ? await res.json() : { error: "Server error" };
       if (!res.ok) { setTemplateError(data.error || "Import failed"); return; }
-      setOwned((prev) => [{ ...data, participants: [] }, ...prev]);
+      setOwned((prev) => [normaliseChecklist(data), ...prev]);
       setNewMode("none");
-    } catch {
-      setTemplateError("Failed to import template — please try again");
-    } finally {
-      setUsingTemplate(null);
-    }
+    } catch { setTemplateError("Failed to import template — please try again"); }
+    finally { setUsingTemplate(null); }
   }
 
   // ── Imported via upload ──────────────────────────────────────────────────
-  function handleImported(cl: unknown) {
-    setOwned((prev) => [{ ...(cl as ChecklistData), participants: [] }, ...prev]);
+  function handleImported(raw: unknown) {
+    setOwned((prev) => [normaliseChecklist(raw as Record<string, unknown>), ...prev]);
     setNewMode("none");
   }
 
@@ -460,56 +759,47 @@ export default function ChecklistSection({ owned: initialOwned, participating: i
     setVisModal(null);
   }
 
-  // ── Drag and drop ────────────────────────────────────────────────────────
-  function handleDragStart(checklistId: string, itemId: string) {
+  // ── Drag and drop (useRef for overId — no re-render on every move) ────────
+  const handleDragStart = useCallback((checklistId: string, itemId: string) => {
     dragChecklistId.current = checklistId;
-    setDragState({ dragId: itemId, overId: null });
-  }
+    setDragId(itemId);
+    dragOverRef.current = null;
+  }, []);
 
-  function handleDragOver(e: React.DragEvent, itemId: string) {
+  const handleDragOver = useCallback((e: React.DragEvent, itemId: string) => {
     e.preventDefault();
-    setDragState((s) => ({ ...s, overId: itemId }));
-  }
+    dragOverRef.current = itemId;
+  }, []);
 
-  function handleDrop(checklistId: string, targetId: string, parentId: string | null) {
-    if (dragState.dragId === null || dragState.dragId === targetId) {
-      setDragState({ dragId: null, overId: null });
-      return;
-    }
+  const handleDrop = useCallback((checklistId: string, targetId: string, parentId: string | null) => {
+    const dragItemId = dragId;
+    setDragId(null);
+    dragOverRef.current = null;
+    if (!dragItemId || dragItemId === targetId) return;
     const cl = owned.find((c) => c.id === checklistId);
     if (!cl) return;
 
-    // Reorder siblings at the same parent level
-    const siblings = parentId
-      ? findItem(cl.items, parentId)?.children ?? []
-      : cl.items.filter((it) => !parentId ? true : false);
-
     const list = parentId ? (findItem(cl.items, parentId)?.children ?? []) : cl.items;
-    const dragIdx = list.findIndex((it) => it.id === dragState.dragId);
+    const dragIdx = list.findIndex((it) => it.id === dragItemId);
     const dropIdx = list.findIndex((it) => it.id === targetId);
-    if (dragIdx === -1 || dropIdx === -1) { setDragState({ dragId: null, overId: null }); return; }
+    if (dragIdx === -1 || dropIdx === -1) return;
 
     const reordered = [...list];
     const [moved] = reordered.splice(dragIdx, 1);
     reordered.splice(dropIdx, 0, moved);
     const orderedIds = reordered.map((it) => it.id);
 
-    // Optimistic UI
     function applyReorder(items: TreeItem[]): TreeItem[] {
       if (!parentId) return reordered;
       return items.map((it) => it.id === parentId ? { ...it, children: reordered } : it.children?.length ? { ...it, children: applyReorder(it.children) } : it);
     }
     patchOwned(checklistId, (c) => ({ ...c, items: applyReorder(c.items) }));
-    setDragState({ dragId: null, overId: null });
 
-    // Persist
     fetch("/api/checklists", {
       method: "PATCH", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "reorderItems", checklistId, orderedIds }),
     }).catch(() => {});
-
-    void siblings; // suppress unused warning
-  }
+  }, [dragId, owned]);
 
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -538,14 +828,11 @@ export default function ChecklistSection({ owned: initialOwned, participating: i
       {/* Blank project form */}
       {newMode === "blank" && (
         <form onSubmit={createBlank} className="mb-4 bg-slate-800 rounded-xl p-4 space-y-2">
-          <input autoFocus required value={newName} onChange={(e) => setNewName(e.target.value)}
-            placeholder="Project name"
+          <input autoFocus required value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Project name"
             className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 placeholder-slate-400 text-sm focus:outline-none focus:border-amber-500" />
           <input value={newDesc} onChange={(e) => setNewDesc(e.target.value)} placeholder="Description (optional)"
             className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 placeholder-slate-400 text-sm focus:outline-none focus:border-amber-500" />
-          <button type="submit" className="w-full py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold rounded-lg text-sm transition-colors">
-            Create project
-          </button>
+          <button type="submit" className="w-full py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold rounded-lg text-sm transition-colors">Create project</button>
         </form>
       )}
 
@@ -555,7 +842,7 @@ export default function ChecklistSection({ owned: initialOwned, participating: i
       {/* Template gallery */}
       {newMode === "template" && (
         <div className="mb-4 space-y-3">
-          <p className="text-xs text-slate-500">Pick a starter template — creates an instant copy in your account. Download .md to customise first.</p>
+          <p className="text-xs text-slate-500">Pick a starter template — creates an instant copy in your account.</p>
           {templateError && <p className="text-red-400 text-xs">{templateError}</p>}
           {templates.length === 0 && <p className="text-slate-500 text-xs py-2">Loading templates…</p>}
           {templates.map((tmpl) => (
@@ -571,8 +858,7 @@ export default function ChecklistSection({ owned: initialOwned, participating: i
                   <p className="text-xs text-slate-500 mt-1">{tmpl.itemCount} items</p>
                 </div>
               </div>
-              <button onClick={() => setPreviewId(previewId === tmpl.id ? null : tmpl.id)}
-                className="text-xs text-slate-500 hover:text-slate-300 mt-2 transition-colors">
+              <button onClick={() => setPreviewId(previewId === tmpl.id ? null : tmpl.id)} className="text-xs text-slate-500 hover:text-slate-300 mt-2 transition-colors">
                 {previewId === tmpl.id ? "Hide preview ▲" : "Preview ▾"}
               </button>
               {previewId === tmpl.id && <TemplatePreview filename={tmpl.filename} />}
@@ -581,10 +867,7 @@ export default function ChecklistSection({ owned: initialOwned, participating: i
                   className="px-4 py-1.5 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 text-xs font-semibold rounded-lg transition-colors">
                   {usingTemplate === tmpl.id ? "Importing…" : "Use this →"}
                 </button>
-                <a href={`/templates/${tmpl.filename}`} download
-                  className="px-4 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs font-semibold rounded-lg transition-colors">
-                  ⬇ Download .md
-                </a>
+                <a href={`/templates/${tmpl.filename}`} download className="px-4 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs font-semibold rounded-lg transition-colors">⬇ Download .md</a>
               </div>
             </div>
           ))}
@@ -596,15 +879,9 @@ export default function ChecklistSection({ owned: initialOwned, participating: i
         <div className="text-center py-8 space-y-3">
           <p className="text-slate-500 text-sm">No projects yet.</p>
           <div className="flex flex-wrap gap-2 justify-center">
-            <button onClick={() => openNew("template")} className="px-4 py-2 bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-semibold rounded-lg hover:bg-amber-500/20 transition-colors">
-              📋 Start from template
-            </button>
-            <button onClick={() => openNew("blank")} className="px-4 py-2 bg-slate-800 border border-slate-700 text-slate-300 text-xs font-semibold rounded-lg hover:bg-slate-700 transition-colors">
-              + Blank project
-            </button>
-            <button onClick={() => openNew("upload")} className="px-4 py-2 bg-slate-800 border border-slate-700 text-slate-300 text-xs font-semibold rounded-lg hover:bg-slate-700 transition-colors">
-              ↑ Upload .md
-            </button>
+            <button onClick={() => openNew("template")} className="px-4 py-2 bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-semibold rounded-lg hover:bg-amber-500/20 transition-colors">📋 Start from template</button>
+            <button onClick={() => openNew("blank")} className="px-4 py-2 bg-slate-800 border border-slate-700 text-slate-300 text-xs font-semibold rounded-lg hover:bg-slate-700 transition-colors">+ Blank project</button>
+            <button onClick={() => openNew("upload")} className="px-4 py-2 bg-slate-800 border border-slate-700 text-slate-300 text-xs font-semibold rounded-lg hover:bg-slate-700 transition-colors">↑ Upload .md</button>
           </div>
         </div>
       )}
@@ -615,25 +892,45 @@ export default function ChecklistSection({ owned: initialOwned, participating: i
           const { done, total } = countCheckable(cl.items);
           const pct = total > 0 ? Math.round((done / total) * 100) : 0;
           const isOpen = expanded === cl.id;
+          const progress = collabProgress[cl.id] ?? null;
 
           return (
             <div key={cl.id} className="bg-slate-800 rounded-xl overflow-hidden">
               {/* Card header */}
               <div className="px-4 py-3 flex items-center gap-2">
-                <button onClick={() => setExpanded(isOpen ? null : cl.id)} className="flex-1 flex items-center gap-2 text-left min-w-0">
-                  <span className="text-sm">{isOpen ? "▾" : "▸"}</span>
-                  <span className="text-sm font-medium text-slate-200 truncate">{cl.name}</span>
-                  {!cl.isOwner && cl.user && <span className="text-xs text-slate-500 shrink-0">by @{cl.user.username}</span>}
+                <button onClick={() => setExpanded(isOpen ? null : cl.id)} className="shrink-0 text-slate-400 hover:text-slate-200 text-sm">
+                  {isOpen ? "▾" : "▸"}
                 </button>
+
+                {/* Project title — double-click to rename */}
+                {cl.isOwner && editingTitleId === cl.id ? (
+                  <input
+                    autoFocus
+                    value={editingTitleText}
+                    onChange={(e) => setEditingTitleText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") { e.preventDefault(); saveTitleEdit(cl.id); }
+                      if (e.key === "Escape") setEditingTitleId(null);
+                    }}
+                    onBlur={() => saveTitleEdit(cl.id)}
+                    className="flex-1 bg-slate-700 border border-amber-500 rounded px-2 py-0.5 text-sm text-slate-100 focus:outline-none"
+                  />
+                ) : (
+                  <span
+                    className="flex-1 text-sm font-medium text-slate-200 truncate cursor-default"
+                    onDoubleClick={() => { if (cl.isOwner) { setEditingTitleId(cl.id); setEditingTitleText(cl.name); } }}
+                    title={cl.isOwner ? "Double-click to rename" : cl.name}
+                  >
+                    {cl.name}
+                  </span>
+                )}
+
+                {!cl.isOwner && cl.user && <span className="text-xs text-slate-500 shrink-0">by @{cl.user.username}</span>}
                 <span className="text-xs text-slate-400 shrink-0">{done}/{total}</span>
 
-                {/* Visibility — gear icon opens modal */}
                 {cl.isOwner && (
-                  <button
-                    onClick={() => setVisModal(cl)}
-                    title="Project settings"
-                    className="text-xs px-1.5 py-0.5 rounded bg-slate-700 hover:bg-slate-600 text-slate-400 hover:text-slate-200 transition-colors shrink-0"
-                  >
+                  <button onClick={() => setVisModal(cl)} title="Project settings"
+                    className="text-xs px-1.5 py-0.5 rounded bg-slate-700 hover:bg-slate-600 text-slate-400 hover:text-slate-200 transition-colors shrink-0">
                     {VIS_LABEL[cl.visibility]}
                   </button>
                 )}
@@ -647,56 +944,94 @@ export default function ChecklistSection({ owned: initialOwned, participating: i
                 )}
               </div>
 
-              {/* Progress bar */}
+              {/* Overall progress bar */}
               <div className="px-4 pb-2">
-                <div className="w-full bg-slate-700 rounded-full h-1.5">
-                  <div className="bg-amber-500 h-1.5 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 bg-slate-700 rounded-full h-1.5">
+                    <div className="bg-amber-500 h-1.5 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                  </div>
+                  <span className="text-xs text-slate-500 shrink-0">{pct}%</span>
                 </div>
               </div>
 
               {/* Expanded tree */}
               {isOpen && (
                 <div className="px-4 pb-4 border-t border-slate-700 pt-3 space-y-0.5">
-                  {cl.items.length === 0 && (
-                    <p className="text-slate-500 text-xs py-2">No items yet.</p>
+                  {/* Collab overall leaderboard */}
+                  {progress && progress.overall.length > 1 && (
+                    <div className="mb-3 space-y-1 bg-slate-700/30 rounded-xl p-3">
+                      <p className="text-xs text-slate-500 font-medium mb-1.5">Participant progress</p>
+                      {progress.overall.map((p) => {
+                        const ppct = p.total > 0 ? Math.round((p.done / p.total) * 100) : 0;
+                        return (
+                          <div key={p.userId} className="flex items-center gap-2">
+                            <span className="text-xs text-slate-400 w-20 truncate shrink-0">@{p.username}</span>
+                            <div className="flex-1 bg-slate-600 rounded-full h-1.5">
+                              <div className="bg-amber-500/70 h-1.5 rounded-full" style={{ width: `${ppct}%` }} />
+                            </div>
+                            <span className="text-xs text-slate-500 shrink-0 w-16 text-right">{p.done}/{p.total} · {ppct}%</span>
+                          </div>
+                        );
+                      })}
+                    </div>
                   )}
+                  {loadingProgress === cl.id && (
+                    <p className="text-xs text-slate-600 italic mb-2">Loading participant progress…</p>
+                  )}
+
+                  {cl.items.length === 0 && <p className="text-slate-500 text-xs py-2">No items yet.</p>}
+
                   {cl.items.map((item) => (
                     <ItemNode
                       key={item.id}
                       item={item}
                       checklistId={cl.id}
                       isOwner={cl.isOwner}
-                      onToggle={(itemId) => toggleItem(cl.id, itemId)}
+                      collapsedIds={collapsedIds}
+                      onToggleCollapse={toggleCollapse}
+                      editingId={editingId}
+                      editingText={editingText}
+                      onEditStart={startEdit}
+                      onEditChange={setEditingText}
+                      onEditSave={saveEdit}
+                      onEditCancel={cancelEdit}
+                      onCheck={checkItem}
+                      onUncheck={uncheckItem}
                       onDelete={deleteItem}
                       onAddChild={(parentId, depth) => { setAddingTo({ checklistId: cl.id, parentId, depth }); setNewItemText(""); }}
-                      dragState={dragState}
+                      addingTo={addingTo}
+                      newItemText={newItemText}
+                      onNewItemChange={setNewItemText}
+                      onAddSubmit={submitAddItem}
+                      onAddCancel={() => setAddingTo(null)}
+                      dragOverRef={dragOverRef}
                       onDragStart={(id) => handleDragStart(cl.id, id)}
-                      onDragOver={(e, id) => handleDragOver(e, id)}
+                      onDragOver={handleDragOver}
                       onDrop={(targetId, parentId) => handleDrop(cl.id, targetId, parentId)}
-                      onDragEnd={() => setDragState({ dragId: null, overId: null })}
+                      onDragEnd={() => { setDragId(null); dragOverRef.current = null; }}
+                      dragId={dragId}
+                      collabProgress={progress}
                     />
                   ))}
 
-                  {/* Add item at root level */}
+                  {/* Add root-level item */}
                   {cl.isOwner && (
-                    addingTo?.checklistId === cl.id ? (
-                      <div className="flex gap-2 mt-2">
+                    addingTo?.checklistId === cl.id && addingTo.parentId === null ? (
+                      <div className="flex gap-1.5 mt-2">
                         <input
                           autoFocus value={newItemText} onChange={(e) => setNewItemText(e.target.value)}
                           onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); submitAddItem(cl.id); } if (e.key === "Escape") setAddingTo(null); }}
                           placeholder="Item text…"
                           className="flex-1 bg-slate-700 border border-slate-600 rounded-lg px-2 py-1.5 text-sm text-slate-100 placeholder-slate-400 focus:outline-none focus:border-amber-500"
                         />
-                        <button onClick={() => submitAddItem(cl.id)} className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-semibold rounded-lg transition-colors">Add</button>
-                        <button onClick={() => setAddingTo(null)} className="text-slate-500 text-xs">✕</button>
+                        <button onClick={() => submitAddItem(cl.id)} className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-semibold rounded-lg">Add</button>
+                        <button onClick={() => setAddingTo(null)} className="text-slate-500 text-xs px-1">✕</button>
                       </div>
                     ) : (
                       <button
                         onClick={() => { setAddingTo({ checklistId: cl.id, parentId: null, depth: 1 }); setNewItemText(""); }}
                         className="text-xs text-slate-500 hover:text-amber-400 mt-1 transition-colors block"
-                      >
-                        + add item
-                      </button>
+                      >+ add item</button>
                     )
                   )}
                 </div>
@@ -708,12 +1043,7 @@ export default function ChecklistSection({ owned: initialOwned, participating: i
 
       {/* Visibility modal */}
       {visModal && (
-        <VisibilityModal
-          current={visModal.visibility}
-          name={visModal.name}
-          onSave={(v) => saveVisibility(visModal, v)}
-          onClose={() => setVisModal(null)}
-        />
+        <VisibilityModal current={visModal.visibility} name={visModal.name} onSave={(v) => saveVisibility(visModal, v)} onClose={() => setVisModal(null)} />
       )}
     </section>
   );

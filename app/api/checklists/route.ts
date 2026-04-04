@@ -150,7 +150,7 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ ok: true });
   }
 
-  // ── toggleProgress ────────────────────────────────────────────────────────
+  // ── toggleProgress (kept for public project page) ────────────────────────
   if (action === "toggleProgress") {
     const { itemId } = body;
     const item = await prisma.checklistItem.findUnique({ where: { id: itemId }, include: { checklist: true } });
@@ -174,6 +174,138 @@ export async function PATCH(req: Request) {
       });
       return NextResponse.json(created);
     }
+  }
+
+  // ── checkItem (dashboard — logs revision, marks done) ─────────────────────
+  if (action === "checkItem") {
+    const { itemId } = body;
+    const item = await prisma.checklistItem.findUnique({ where: { id: itemId }, include: { checklist: true } });
+    if (!item) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    const isOwner = item.checklist.userId === userId;
+    const isParticipant =
+      !isOwner &&
+      !!(await prisma.checklistParticipant.findUnique({ where: { checklistId_userId: { checklistId: item.checklistId, userId } } }));
+    if (!isOwner && !isParticipant) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+    // Always log a revision
+    await prisma.checklistRevision.create({ data: { itemId, userId } });
+
+    // Upsert progress as done=true
+    await prisma.checklistProgress.upsert({
+      where: { itemId_userId: { itemId, userId } },
+      update: { done: true, doneAt: new Date() },
+      create: { itemId, userId, done: true, doneAt: new Date() },
+    });
+
+    const revisionCount = await prisma.checklistRevision.count({ where: { itemId, userId } });
+    return NextResponse.json({ done: true, revisionCount });
+  }
+
+  // ── uncheckItem (marks not done, no revision) ─────────────────────────────
+  if (action === "uncheckItem") {
+    const { itemId } = body;
+    const item = await prisma.checklistItem.findUnique({ where: { id: itemId }, include: { checklist: true } });
+    if (!item) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    const isOwner = item.checklist.userId === userId;
+    const isParticipant =
+      !isOwner &&
+      !!(await prisma.checklistParticipant.findUnique({ where: { checklistId_userId: { checklistId: item.checklistId, userId } } }));
+    if (!isOwner && !isParticipant) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+    await prisma.checklistProgress.upsert({
+      where: { itemId_userId: { itemId, userId } },
+      update: { done: false, doneAt: null },
+      create: { itemId, userId, done: false },
+    });
+    return NextResponse.json({ done: false });
+  }
+
+  // ── getSectionProgress (collab leaderboard per section) ───────────────────
+  if (action === "getSectionProgress") {
+    const { checklistId } = body;
+    const cl = await prisma.checklist.findUnique({
+      where: { id: checklistId },
+      include: {
+        participants: { include: { user: { select: { id: true, name: true, username: true } } } },
+        items: {
+          where: { parentId: null },
+          orderBy: { order: "asc" },
+          include: {
+            progress: { select: { userId: true, done: true } },
+            children: {
+              orderBy: { order: "asc" },
+              include: {
+                progress: { select: { userId: true, done: true } },
+                children: {
+                  orderBy: { order: "asc" },
+                  include: { progress: { select: { userId: true, done: true } } },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!cl) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    const isOwner = cl.userId === userId;
+    const isParticipant =
+      !isOwner &&
+      !!(await prisma.checklistParticipant.findUnique({ where: { checklistId_userId: { checklistId, userId } } }));
+    if (!isOwner && !isParticipant) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+    const ownerUser = await prisma.user.findUnique({ where: { id: cl.userId }, select: { id: true, name: true, username: true } });
+    const allParticipants = [
+      ...(ownerUser ? [ownerUser] : []),
+      ...cl.participants.map((p) => p.user),
+    ];
+
+    // Helper: flatten checkable items from a list
+    type AnyItem = { id: string; isSection: boolean; progress: { userId: string; done: boolean }[]; children?: AnyItem[] };
+    function flatCheckable(items: AnyItem[]): AnyItem[] {
+      const r: AnyItem[] = [];
+      for (const it of items) {
+        if (!it.isSection) r.push(it);
+        if (it.children) r.push(...flatCheckable(it.children));
+      }
+      return r;
+    }
+
+    const sections = cl.items
+      .filter((it) => it.isSection)
+      .map((section) => {
+        const checkable = flatCheckable(section.children as AnyItem[]);
+        const total = checkable.length;
+        const participants = allParticipants.map((u) => ({
+          userId: u.id,
+          name: u.name,
+          username: u.username,
+          done: checkable.filter((it) => it.progress.some((p) => p.userId === u.id && p.done)).length,
+          total,
+        }));
+        return { sectionId: section.id, sectionText: section.text, participants };
+      });
+
+    // Also overall stats (non-section items included)
+    const allCheckable = flatCheckable(cl.items as AnyItem[]);
+    const overall = allParticipants.map((u) => ({
+      userId: u.id,
+      name: u.name,
+      username: u.username,
+      done: allCheckable.filter((it) => it.progress.some((p) => p.userId === u.id && p.done)).length,
+      total: allCheckable.length,
+    }));
+
+    return NextResponse.json({ sections, overall });
+  }
+
+  // ── renameChecklist ───────────────────────────────────────────────────────
+  if (action === "renameChecklist") {
+    const { checklistId, name } = body;
+    if (!name?.trim()) return NextResponse.json({ error: "Name required" }, { status: 400 });
+    const cl = await prisma.checklist.findUnique({ where: { id: checklistId } });
+    if (!cl || cl.userId !== userId) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    const updated = await prisma.checklist.update({ where: { id: checklistId }, data: { name: name.trim() } });
+    return NextResponse.json(updated);
   }
 
   // ── changeVisibility ──────────────────────────────────────────────────────

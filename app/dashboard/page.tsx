@@ -10,13 +10,18 @@ function nestedItems(userId: string) {
     orderBy: { order: "asc" as const },
     include: {
       progress: { where: { userId } },
+      revisions: { where: { userId }, select: { createdAt: true }, orderBy: { createdAt: "desc" as const } },
       children: {
         orderBy: { order: "asc" as const },
         include: {
           progress: { where: { userId } },
+          revisions: { where: { userId }, select: { createdAt: true }, orderBy: { createdAt: "desc" as const } },
           children: {
             orderBy: { order: "asc" as const },
-            include: { progress: { where: { userId } } },
+            include: {
+              progress: { where: { userId } },
+              revisions: { where: { userId }, select: { createdAt: true }, orderBy: { createdAt: "desc" as const } },
+            },
           },
         },
       },
@@ -31,7 +36,7 @@ export default async function DashboardPage() {
   const userId = session.user.id;
 
   const [user, checkIns, ownedChecklists, participatingChecklists] = await Promise.all([
-    prisma.user.findUnique({ where: { id: userId }, select: { name: true, username: true, studyingFor: true, examDate: true } }),
+    prisma.user.findUnique({ where: { id: userId }, select: { name: true, username: true, studyingFor: true, examDate: true, isAdmin: true } }),
     prisma.checkIn.findMany({ where: { userId }, orderBy: { date: "desc" } }),
     prisma.checklist.findMany({
       where: { userId },
