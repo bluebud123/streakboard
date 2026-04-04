@@ -61,10 +61,18 @@ model ChecklistItem {
   id          String              @id @default(cuid())
   checklistId String
   checklist   Checklist           @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+  parentId    String?
+  parent      ChecklistItem?      @relation("ItemChildren", fields: [parentId], references: [id], onDelete: Cascade)
+  children    ChecklistItem[]     @relation("ItemChildren")
   text        String
+  isSection   Boolean             @default(false)
+  depth       Int                 @default(0)
   order       Int                 @default(0)
   createdAt   DateTime            @default(now())
   progress    ChecklistProgress[]
+
+  @@index([parentId])
+  @@index([checklistId, order])
 }
 
 model ChecklistParticipant {

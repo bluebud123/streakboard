@@ -4,6 +4,26 @@ import { prisma } from "@/lib/db";
 import { calcStreaks, localDateKey } from "@/lib/streak";
 import DashboardClient from "./DashboardClient";
 
+function nestedItems(userId: string) {
+  return {
+    where: { parentId: null as null | string },
+    orderBy: { order: "asc" as const },
+    include: {
+      progress: { where: { userId } },
+      children: {
+        orderBy: { order: "asc" as const },
+        include: {
+          progress: { where: { userId } },
+          children: {
+            orderBy: { order: "asc" as const },
+            include: { progress: { where: { userId } } },
+          },
+        },
+      },
+    },
+  };
+}
+
 export default async function DashboardPage() {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
@@ -16,7 +36,7 @@ export default async function DashboardPage() {
     prisma.checklist.findMany({
       where: { userId },
       include: {
-        items: { orderBy: { order: "asc" }, include: { progress: { where: { userId } } } },
+        items: nestedItems(userId),
         participants: { include: { user: { select: { id: true, name: true, username: true } } } },
       },
       orderBy: { createdAt: "desc" },
@@ -25,7 +45,7 @@ export default async function DashboardPage() {
       where: { participants: { some: { userId } }, userId: { not: userId } },
       include: {
         user: { select: { name: true, username: true } },
-        items: { orderBy: { order: "asc" }, include: { progress: { where: { userId } } } },
+        items: nestedItems(userId),
         participants: { include: { user: { select: { id: true, name: true, username: true } } } },
       },
       orderBy: { createdAt: "desc" },
@@ -45,8 +65,8 @@ export default async function DashboardPage() {
       streaks={streaks}
       todayCheckIn={todayCheckIn}
       username={(session.user as { username: string }).username}
-      ownedChecklists={ownedChecklists}
-      participatingChecklists={participatingChecklists}
+      ownedChecklists={ownedChecklists as never}
+      participatingChecklists={participatingChecklists as never}
       userId={userId}
     />
   );

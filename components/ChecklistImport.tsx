@@ -6,14 +6,14 @@ interface Props {
   onImported: (checklist: unknown) => void;
 }
 
-const TEMPLATE = `# My Study Checklist
+const TEMPLATE = `# My Study Project
 
-## Topic 1
-- [ ] First item to complete
-- [ ] Second item
+## Section One
+- [ ] First task to complete
+- [ ] Second task
 
-## Topic 2
-- [ ] Another item
+## Section Two
+- [ ] Another task
 - [ ] And one more
 `;
 
@@ -27,13 +27,19 @@ export default function ChecklistImport({ onImported }: Props) {
   async function upload(file: File) {
     setLoading(true);
     setError("");
-    const form = new FormData();
-    form.append("file", file);
-    const res = await fetch("/api/checklists/import", { method: "POST", body: form });
-    const data = await res.json();
-    setLoading(false);
-    if (!res.ok) { setError(data.error || "Import failed"); return; }
-    onImported(data);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch("/api/checklists/import", { method: "POST", body: form });
+      const isJson = res.headers.get("content-type")?.includes("application/json");
+      const data = isJson ? await res.json() : { error: "Server error — please try again" };
+      if (!res.ok) { setError(data.error || "Import failed"); return; }
+      onImported(data);
+    } catch {
+      setError("Upload failed — check your connection and try again");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -56,14 +62,14 @@ export default function ChecklistImport({ onImported }: Props) {
         )}
       </div>
 
-      {error && <p className="text-red-400 text-xs">{error}</p>}
+      {error && <p className="text-red-400 text-xs px-1">{error}</p>}
 
       <button
         type="button"
         onClick={() => setShowTemplate((v) => !v)}
         className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
       >
-        {showTemplate ? "Hide template" : "Show file template ↓"}
+        {showTemplate ? "Hide template" : "Show file format ↓"}
       </button>
 
       {showTemplate && (
