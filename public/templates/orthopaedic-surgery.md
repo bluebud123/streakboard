@@ -1,0 +1,247 @@
+# Orthopaedic Surgery Fellowship Exam
+
+## Basic Science
+- [ ] Bone graft
+- [ ] Fat embolism
+- [ ] Osteomyelitis
+- [ ] Osteoporosis
+- [ ] Antibiotics (empirical vs prophylactic)
+- [ ] Preoperative prophylaxis against infection
+- [ ] Theatre design
+- [ ] DVT
+- [ ] Split-skin graft vs full-thickness skin graft
+- [ ] Pulmonary embolism
+- [ ] Sutures
+- [ ] Tourniquet
+- [ ] Fracture healing
+- [ ] Traction
+- [ ] Diathermy
+- [ ] Local anaesthesia
+- [ ] Bone growth factors
+- [ ] Bone formation (intramembranous + endochondral)
+- [ ] Drain
+- [ ] Bone cement + cementing technique
+- [ ] Plaster of Paris
+- [ ] Nerve injury (Seddon/Sunderland, nerve healing, repair principles)
+- [ ] Wound healing (phases, factors affecting healing)
+- [ ] Biomechanics (stress/strain, viscoelasticity, implant failure modes)
+- [ ] Blood transfusion / cell salvage
+- [ ] Nutrition and surgical outcomes
+
+## Trauma
+- [ ] Open fracture
+- [ ] Damage control orthopaedics (DCO / SIRS / CARS / ERB / FLOW)
+- [ ] Neck of femur fracture
+- [ ] Non-union + mal-union
+- [ ] Compartment syndrome (leg, forearm, hand, foot)
+- [ ] Intramedullary nail
+- [ ] Plating principles
+- [ ] Dynamic hip screw (DHS)
+- [ ] Lag screw
+- [ ] Cortical vs cancellous screw
+- [ ] Distal radius fracture
+- [ ] Tibial plateau fracture
+- [ ] Pilon fracture
+- [ ] Diaphyseal femur fracture / subtrochanteric fracture
+- [ ] Pelvis and acetabular fracture
+- [ ] Polytrauma management / damage control resuscitation
+- [ ] Pathological fracture management
+- [ ] Nerve and vascular injury with fracture
+- [ ] Periprosthetic fracture
+- [ ] Floating knee
+
+## Foot and Ankle
+- [ ] Talus fracture
+- [ ] Calcaneal fracture
+- [ ] Lisfranc injury
+- [ ] Malleolar fracture
+- [ ] 5th metatarsal fracture
+- [ ] Charcot foot
+- [ ] Hallux valgus
+- [ ] High and low ankle sprain
+- [ ] Peroneal tendon subluxation
+- [ ] Posterior tibial tendon dysfunction
+- [ ] Tendo-Achilles rupture
+- [ ] Tarsal tunnel syndrome
+- [ ] Plantar fasciitis
+- [ ] Tibiotalar impingement
+- [ ] Diabetic foot ulcer (DFU)
+- [ ] Ankle OA
+- [ ] Toe deformities (hammer / claw / mallet toe)
+- [ ] Morton's neuroma
+- [ ] Metatarsalgia
+- [ ] Subtalar OA
+- [ ] Ankle ligament reconstruction (Brostrom)
+
+## Arthroplasty
+- [ ] DVT in arthroplasty
+- [ ] Periprosthetic joint infection
+- [ ] Rheumatoid arthritis knee
+- [ ] Avascular necrosis hip
+- [ ] Polyethylene + cementing
+- [ ] Total knee replacement (TKR)
+- [ ] Total hip replacement (THR)
+- [ ] High tibial osteotomy (HTO)
+- [ ] Unicompartmental knee arthroplasty (UKA)
+- [ ] Obesity in arthroplasty
+- [ ] Revision TKR
+- [ ] Revision THR
+- [ ] Bearing surfaces (ceramic, metal, XLPE)
+- [ ] Dislocation after THR
+- [ ] Leg length discrepancy
+- [ ] Instability after TKR
+- [ ] Stiffness after TKR
+- [ ] Painful TKR / THR workup
+- [ ] Patella resurfacing
+- [ ] Cementless vs cemented fixation principles
+- [ ] Templating
+
+## Oncology
+- [ ] Biopsy principles
+- [ ] Bone and spine metastasis
+- [ ] Cell cycle + chemotherapy and radiotherapy
+- [ ] Bone tumour classification
+- [ ] Soft tissue tumour classification
+- [ ] Osteosarcoma
+- [ ] Ewing's sarcoma
+- [ ] Chondrosarcoma
+- [ ] Giant cell tumour (GCT)
+- [ ] Osteochondroma / enchondroma
+- [ ] Limb salvage principles
+- [ ] Surgical margins (Enneking staging)
+
+## Paediatric Orthopaedics
+- [ ] Developmental dysplasia of the hip (DDH)
+- [ ] Slipped capital femoral epiphysis (SCFE)
+- [ ] Perthes disease
+- [ ] Blount's disease
+- [ ] Cerebral palsy (CP)
+- [ ] Femur fracture in children
+- [ ] Non-accidental injury (NAI)
+- [ ] Pes cavus
+- [ ] Osteogenesis imperfecta (OI)
+- [ ] Supracondylar fracture
+- [ ] Lateral condyle fracture
+- [ ] Rickets
+- [ ] Spondyloepiphyseal dysplasia (SED)
+- [ ] Multiple epiphyseal dysplasia (MED)
+- [ ] Achondroplasia
+- [ ] In-toeing gait
+- [ ] Spina bifida
+- [ ] Congenital talipes equinovarus (CTEV)
+- [ ] Flexible flat foot
+- [ ] Vertical talus
+- [ ] Tarsal coalition
+- [ ] Hip septic arthritis vs transient synovitis
+- [ ] Leg length discrepancy (paeds)
+- [ ] Limb lengthening principles (Ilizarov)
+- [ ] Obstetric brachial plexus palsy
+
+## Spine
+- [ ] Disc herniation
+- [ ] Degenerative spine
+- [ ] Sagittal balance
+- [ ] Spinal cord injury
+- [ ] Spinal stenosis
+- [ ] Approach to scoliosis
+- [ ] Spinal tuberculosis / pyogenic spine
+- [ ] Thoracolumbar fracture
+- [ ] Spinal metastases
+- [ ] Cervical fracture
+- [ ] Cervical myelopathy
+- [ ] Cauda equina syndrome
+- [ ] Scheuermann's kyphosis
+- [ ] DISH
+- [ ] Discogenic back pain
+- [ ] Ankylosing spondylitis (AS)
+- [ ] Degenerative spondylolisthesis
+- [ ] Adult isthmic spondylolisthesis
+- [ ] Cervical facet dislocation
+- [ ] Atlanto-axial instability (C1/C2)
+- [ ] Odontoid fracture
+- [ ] Cervical radiculopathy
+- [ ] Failed back surgery syndrome
+- [ ] Spinal tumours (intradural vs extradural)
+- [ ] Ossification of posterior longitudinal ligament (OPLL)
+
+## Sports Orthopaedics
+- [ ] ACL injury and reconstruction
+- [ ] PCL injury
+- [ ] Posterolateral corner (PLC) injury
+- [ ] Patellofemoral instability
+- [ ] Chondral injury management
+- [ ] Meniscus injury
+- [ ] Subacromial impingement
+- [ ] Frozen shoulder (adhesive capsulitis)
+- [ ] Rotator cuff tear
+- [ ] Rotator cuff arthropathy
+- [ ] Shoulder instability (AMBRI/TUBS)
+- [ ] SLAP lesion
+- [ ] Posterior instability
+- [ ] Acromioclavicular joint (ACJ) injury
+- [ ] Multiligament knee injury
+- [ ] Knee dislocation
+- [ ] MCL injury
+- [ ] Femoroacetabular impingement (FAI) / Hip labral tear
+- [ ] Hamstring injuries
+- [ ] Patellar tendinopathy / quadriceps tendon rupture
+- [ ] Distal biceps tendon rupture
+- [ ] Medial elbow instability (UCL)
+- [ ] Elbow OCD / lateral elbow pain in athletes
+
+## Hand and Wrist
+- [ ] Fingertip injuries
+- [ ] Hand infection
+- [ ] Flexor tendon injuries + rehabilitation
+- [ ] Brachial plexus injury
+- [ ] Scaphoid fracture
+- [ ] Radial / median / ulnar nerve entrapment
+- [ ] Extensor tendon injuries and repair
+- [ ] Pulley system
+- [ ] Trigger finger
+- [ ] de Quervain's tenosynovitis
+- [ ] Finger reimplantation
+- [ ] Congenital hand anomalies
+- [ ] TFCC injury
+- [ ] Metacarpal fracture
+- [ ] Perilunate dislocation (SNAC / SLAC / VISI / DISI)
+- [ ] Tendon transfer principles
+- [ ] Dupuytren's contracture
+- [ ] Ganglion
+- [ ] CMC OA (thumb basal joint arthritis)
+- [ ] Rheumatoid hand
+- [ ] DRUJ instability
+- [ ] High vs low nerve injury — functional consequences
+- [ ] Wrist instability
+
+## Operative Viva
+- [ ] Lumbar discectomy
+- [ ] Laminectomy
+- [ ] Pedicle screw insertion
+- [ ] Anterior cervical approach + ACDF
+- [ ] Hip approaches
+- [ ] Radius approach (Henry / Thompson)
+- [ ] Humerus approach
+- [ ] Elbow approaches
+- [ ] Deltopectoral approach
+- [ ] Knee arthroscopy
+- [ ] Total knee replacement steps
+- [ ] Safe zone for external fixation
+- [ ] Iliac crest bone graft
+- [ ] Wound debridement — open fracture + traumatic wound
+- [ ] Ray amputation
+- [ ] Below-knee / above-knee amputation
+- [ ] Fasciotomies
+- [ ] Carpal tunnel release (CTR)
+- [ ] Trigger finger release (TFR)
+- [ ] Halo vest + skull tongs
+- [ ] Wrist block / ankle block / digital block
+- [ ] THR operative steps
+- [ ] ORIF distal radius
+- [ ] ORIF tibial plateau
+- [ ] Ankle ORIF
+- [ ] Retrograde femoral nail
+- [ ] Tension band wiring
+- [ ] ACL reconstruction
+- [ ] Hallux valgus correction (scarf / chevron)
+- [ ] Nerve repair / graft

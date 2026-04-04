@@ -4,16 +4,6 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { localDateKey } from "@/lib/streak";
 
-interface GuestGoal {
-  localId: string;
-  text: string;
-  target: number;
-  current: number;
-  unit: string;
-  achieved: boolean;
-  achievedDate: string | null;
-}
-
 interface GuestCheckIn {
   date: string;
   minutes: number;
@@ -25,10 +15,9 @@ interface GuestStore {
   studyingFor: string;
   examDate: string | null;
   checkIns: GuestCheckIn[];
-  goals: GuestGoal[];
 }
 
-const EMPTY: GuestStore = { version: 1, studyingFor: "", examDate: null, checkIns: [], goals: [] };
+const EMPTY: GuestStore = { version: 1, studyingFor: "", examDate: null, checkIns: [] };
 
 function readStore(): GuestStore {
   try {
@@ -64,8 +53,6 @@ export default function GuestPage() {
   const [mounted, setMounted] = useState(false);
   const [minutes, setMinutes] = useState(60);
   const [note, setNote] = useState("");
-  const [showGoalForm, setShowGoalForm] = useState(false);
-  const [newGoal, setNewGoal] = useState({ text: "", target: "", unit: "times" });
 
   const today = typeof window !== "undefined" ? localDateKey(new Date()) : "";
 
@@ -74,10 +61,9 @@ export default function GuestPage() {
     setStore(s);
     setMounted(true);
 
-    // beforeunload warning
     const handler = (e: BeforeUnloadEvent) => {
       const cur = readStore();
-      if (cur.checkIns.length > 0 || cur.goals.length > 0) {
+      if (cur.checkIns.length > 0) {
         e.preventDefault();
         e.returnValue = "";
       }
@@ -98,7 +84,7 @@ export default function GuestPage() {
     const params = new URLSearchParams({
       studyingFor: store.studyingFor,
       examDate: store.examDate ?? "",
-      guestData: JSON.stringify({ checkIns: store.checkIns, goals: store.goals }),
+      guestData: JSON.stringify({ checkIns: store.checkIns }),
     });
     return `/signup?${params.toString()}`;
   }
@@ -106,9 +92,7 @@ export default function GuestPage() {
   const todayCheckIn = store.checkIns.find((c) => c.date === today);
   const checkedIn = !!todayCheckIn;
   const streak = calcStreak(store.checkIns);
-  const activeGoals = store.goals.filter((g) => !g.achieved);
-  const achievedGoals = store.goals.filter((g) => g.achieved);
-  const hasData = store.checkIns.length > 0 || store.goals.length > 0;
+  const hasData = store.checkIns.length > 0;
 
   function handleCheckIn() {
     update((s) => {
@@ -122,47 +106,6 @@ export default function GuestPage() {
 
   function handleUndo() {
     update((s) => ({ ...s, checkIns: s.checkIns.filter((c) => c.date !== today) }));
-  }
-
-  function addGoal(e: React.FormEvent) {
-    e.preventDefault();
-    if (!newGoal.text || !newGoal.target) return;
-    update((s) => ({
-      ...s,
-      goals: [...s.goals, {
-        localId: crypto.randomUUID(),
-        text: newGoal.text,
-        target: Number(newGoal.target),
-        current: 0,
-        unit: newGoal.unit || "times",
-        achieved: false,
-        achievedDate: null,
-      }],
-    }));
-    setNewGoal({ text: "", target: "", unit: "times" });
-    setShowGoalForm(false);
-  }
-
-  function incrementGoal(localId: string) {
-    update((s) => ({
-      ...s,
-      goals: s.goals.map((g) => {
-        if (g.localId !== localId) return g;
-        const next = g.current + 1;
-        return { ...g, current: next, achieved: next >= g.target, achievedDate: next >= g.target ? today : null };
-      }),
-    }));
-  }
-
-  function decrementGoal(localId: string) {
-    update((s) => ({
-      ...s,
-      goals: s.goals.map((g) => g.localId === localId ? { ...g, current: Math.max(0, g.current - 1), achieved: false, achievedDate: null } : g),
-    }));
-  }
-
-  function deleteGoal(localId: string) {
-    update((s) => ({ ...s, goals: s.goals.filter((g) => g.localId !== localId) }));
   }
 
   if (!mounted) return null;
@@ -250,74 +193,12 @@ export default function GuestPage() {
           )}
         </section>
 
-        {/* Goals */}
-        <section className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-slate-200">Goals</h2>
-            <button onClick={() => setShowGoalForm((v) => !v)} className="text-sm text-amber-400 hover:text-amber-300 transition-colors">
-              {showGoalForm ? "Cancel" : "+ Add goal"}
-            </button>
-          </div>
-          {showGoalForm && (
-            <form onSubmit={addGoal} className="mb-4 bg-slate-800 rounded-xl p-4 space-y-3">
-              <input type="text" required value={newGoal.text} placeholder="Goal description"
-                onChange={(e) => setNewGoal((g) => ({ ...g, text: e.target.value }))}
-                className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 placeholder-slate-400 text-sm focus:outline-none focus:border-amber-500" />
-              <div className="flex gap-2">
-                <input type="number" required min={1} value={newGoal.target} placeholder="Target"
-                  onChange={(e) => setNewGoal((g) => ({ ...g, target: e.target.value }))}
-                  className="w-24 bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 placeholder-slate-400 text-sm focus:outline-none focus:border-amber-500" />
-                <input type="text" value={newGoal.unit} placeholder="unit"
-                  onChange={(e) => setNewGoal((g) => ({ ...g, unit: e.target.value }))}
-                  className="flex-1 bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 placeholder-slate-400 text-sm focus:outline-none focus:border-amber-500" />
-              </div>
-              <button type="submit" className="w-full py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold rounded-lg text-sm transition-colors">Add goal</button>
-            </form>
-          )}
-          <div className="space-y-3">
-            {activeGoals.length === 0 && !showGoalForm && (
-              <p className="text-slate-500 text-sm text-center py-4">No goals yet.</p>
-            )}
-            {activeGoals.map((g) => {
-              const pct = Math.min(100, Math.round((g.current / g.target) * 100));
-              return (
-                <div key={g.localId} className="bg-slate-800 rounded-xl p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="flex-1 text-sm text-slate-200">{g.text}</span>
-                    <span className="text-xs text-slate-400">{g.current}/{g.target} {g.unit}</span>
-                    <div className="flex gap-1">
-                      <button onClick={() => decrementGoal(g.localId)} className="w-7 h-7 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-sm transition-colors">-</button>
-                      <button onClick={() => incrementGoal(g.localId)} className="w-7 h-7 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 text-sm transition-colors">+</button>
-                      <button onClick={() => deleteGoal(g.localId)} className="w-7 h-7 rounded-lg bg-slate-700 hover:bg-red-500/20 text-slate-500 hover:text-red-400 text-xs transition-colors">✕</button>
-                    </div>
-                  </div>
-                  <div className="w-full bg-slate-700 rounded-full h-1.5">
-                    <div className="bg-amber-500 h-1.5 rounded-full transition-all" style={{ width: `${pct}%` }} />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          {achievedGoals.length > 0 && (
-            <details className="mt-4">
-              <summary className="text-xs text-slate-500 cursor-pointer">{achievedGoals.length} achieved</summary>
-              <div className="mt-2 space-y-2">
-                {achievedGoals.map((g) => (
-                  <div key={g.localId} className="bg-slate-800/50 rounded-xl px-4 py-2 flex items-center gap-2">
-                    <span className="text-emerald-400 text-sm">✓</span>
-                    <span className="text-sm text-slate-400 line-through">{g.text}</span>
-                    <button onClick={() => deleteGoal(g.localId)} className="ml-auto text-slate-600 hover:text-red-400 text-xs">✕</button>
-                  </div>
-                ))}
-              </div>
-            </details>
-          )}
-        </section>
-
         {/* CTA to sign up */}
         <section className="bg-amber-500/5 border border-amber-500/20 rounded-2xl p-6 text-center">
           <h2 className="font-semibold text-amber-400 mb-2">Want to share your streak?</h2>
-          <p className="text-slate-400 text-sm mb-4">Sign up to get your public profile link and keep your data safe.</p>
+          <p className="text-slate-400 text-sm mb-4">
+            Sign up for a public profile link, study project tracking, and streak history — all free.
+          </p>
           {hasData ? (
             <Link href={buildSaveUrl()} className="inline-block px-6 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-sm transition-colors">
               Save progress & create account →

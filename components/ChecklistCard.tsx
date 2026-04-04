@@ -21,7 +21,7 @@ export default function ChecklistCard({ name, done, total, slug, visibility }: P
       <div className="flex justify-between items-start mb-2 gap-2">
         <div className="flex-1 min-w-0">
           {slug ? (
-            <Link href={`/checklist/${slug}`} className="text-sm font-medium text-slate-200 hover:text-amber-400 transition-colors truncate block">
+            <Link href={`/project/${slug}`} className="text-sm font-medium text-slate-200 hover:text-amber-400 transition-colors truncate block">
               {name}
             </Link>
           ) : (

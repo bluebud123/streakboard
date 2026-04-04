@@ -18,11 +18,6 @@ export async function GET(
       examDate: true,
       isPublic: true,
       checkIns: { select: { date: true, minutes: true } },
-      goals: {
-        where: { achieved: false },
-        orderBy: { createdAt: "asc" },
-        select: { id: true, text: true, target: true, current: true, unit: true },
-      },
       checklists: {
         where: { visibility: { in: ["PUBLIC_TEMPLATE", "PUBLIC_COLLAB", "PUBLIC_EDIT"] } },
         select: {
@@ -60,7 +55,6 @@ export async function GET(
     streaks,
     heatmap,
     study,
-    goals: user.goals,
     checklists,
   });
 }

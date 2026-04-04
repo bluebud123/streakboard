@@ -26,7 +26,6 @@ model User {
   isPublic            Boolean                @default(true)
   createdAt           DateTime               @default(now())
   checkIns            CheckIn[]
-  goals               Goal[]
   checklists          Checklist[]
   participatingIn     ChecklistParticipant[]
   checklistProgress   ChecklistProgress[]
@@ -42,19 +41,6 @@ model CheckIn {
   createdAt DateTime @default(now())
 
   @@unique([userId, date])
-}
-
-model Goal {
-  id           String   @id @default(cuid())
-  userId       String
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  text         String
-  target       Int
-  current      Int      @default(0)
-  unit         String   @default("times")
-  achieved     Boolean  @default(false)
-  achievedDate String?
-  createdAt    DateTime @default(now())
 }
 
 model Checklist {

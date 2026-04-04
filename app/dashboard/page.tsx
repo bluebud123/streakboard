@@ -10,10 +10,9 @@ export default async function DashboardPage() {
 
   const userId = session.user.id;
 
-  const [user, checkIns, goals, ownedChecklists, participatingChecklists] = await Promise.all([
+  const [user, checkIns, ownedChecklists, participatingChecklists] = await Promise.all([
     prisma.user.findUnique({ where: { id: userId }, select: { name: true, username: true, studyingFor: true, examDate: true } }),
     prisma.checkIn.findMany({ where: { userId }, orderBy: { date: "desc" } }),
-    prisma.goal.findMany({ where: { userId }, orderBy: { createdAt: "asc" } }),
     prisma.checklist.findMany({
       where: { userId },
       include: {
@@ -45,7 +44,6 @@ export default async function DashboardPage() {
       user={user}
       streaks={streaks}
       todayCheckIn={todayCheckIn}
-      goals={goals}
       username={(session.user as { username: string }).username}
       ownedChecklists={ownedChecklists}
       participatingChecklists={participatingChecklists}

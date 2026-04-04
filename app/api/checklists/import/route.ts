@@ -20,8 +20,8 @@ function parseMarkdown(content: string): { name: string; items: ParsedItem[] } {
     const h2 = line.match(/^##\s+(.+)/);
     if (h2) { currentSection = h2[1].trim(); continue; }
 
-    // Match: - [ ] text, - [x] text, - text, * text, * [ ] text
-    const item = line.match(/^[-*]\s+(?:\[[ xX]\]\s+)?(.+)/);
+    // Match: - [ ] text, - [x] text, - text, * text, * [ ] text, 1. text, 22. [AI] text
+    const item = line.match(/^(?:[-*]|\d+\.)\s+(?:\[[ xX]\]\s+)?(.+)/);
     if (item) {
       const text = item[1].trim();
       if (!text) continue;
