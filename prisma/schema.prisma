@@ -3,16 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
+  provider  = "sqlite"
   url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
-}
-
-enum Visibility {
-  PRIVATE
-  PUBLIC_TEMPLATE
-  PUBLIC_COLLAB
-  PUBLIC_EDIT
 }
 
 model User {
@@ -40,9 +32,10 @@ model CheckIn {
   date      String
   minutes   Int      @default(0)
   note      String?
+  studyTime String?
   createdAt DateTime @default(now())
 
-  @@unique([userId, date])
+  @@index([userId, date])
 }
 
 model Checklist {
@@ -51,7 +44,7 @@ model Checklist {
   user         User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
   name         String
   description  String?
-  visibility   Visibility             @default(PRIVATE)
+  visibility   String                 @default("PRIVATE")
   slug         String?                @unique
   templateOf   String?
   createdAt    DateTime               @default(now())
@@ -87,6 +80,7 @@ model ChecklistParticipant {
   joinedAt    DateTime  @default(now())
 
   @@unique([checklistId, userId])
+  @@index([userId])
 }
 
 model ChecklistProgress {

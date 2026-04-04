@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import SessionProvider from "@/components/SessionProvider";
+import { Toaster } from "sonner";
 
 export const metadata: Metadata = {
   title: "Streakboard — Track your learning. Share your streak.",
@@ -13,6 +14,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body className="bg-slate-950 text-slate-100 min-h-screen">
         <SessionProvider>{children}</SessionProvider>
+        <Toaster theme="dark" position="bottom-right" richColors />
       </body>
     </html>
   );

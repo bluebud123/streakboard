@@ -11,15 +11,25 @@ export async function POST(req: Request) {
 
   const safeCheckIns = Array.isArray(checkIns) ? checkIns.slice(0, 365) : [];
 
-  await Promise.all(
-    safeCheckIns.map((ci: { date: string; minutes: number; note: string | null }) =>
-      prisma.checkIn.upsert({
-        where: { userId_date: { userId, date: ci.date } },
-        update: {},
-        create: { userId, date: ci.date, minutes: ci.minutes ?? 0, note: ci.note ?? null },
-      })
-    )
+  // Check existing dates to avoid duplicates (unique constraint removed, so do it manually)
+  const existingDates = new Set(
+    (await prisma.checkIn.findMany({ where: { userId }, select: { date: true } })).map((c) => c.date)
   );
+
+  const newEntries = safeCheckIns.filter(
+    (ci: { date: string; minutes: number; note: string | null }) => !existingDates.has(ci.date)
+  );
+
+  if (newEntries.length > 0) {
+    await prisma.checkIn.createMany({
+      data: newEntries.map((ci: { date: string; minutes: number; note: string | null }) => ({
+        userId,
+        date: ci.date,
+        minutes: ci.minutes ?? 0,
+        note: ci.note ?? null,
+      })),
+    });
+  }
 
   return NextResponse.json({ ok: true });
 }

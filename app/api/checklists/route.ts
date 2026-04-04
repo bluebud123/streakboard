@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
+import { customAlphabet } from "nanoid";
+
+const nanoid = customAlphabet("abcdefghijklmnopqrstuvwxyz0123456789", 6);
 
 function slugify(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
@@ -220,6 +223,32 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ done: false });
   }
 
+  // ── removeLastRevision (undo accidental check) ────────────────────────────
+  if (action === "removeLastRevision") {
+    const { itemId } = body;
+    const item = await prisma.checklistItem.findUnique({ where: { id: itemId }, include: { checklist: true } });
+    if (!item) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    const isOwner = item.checklist.userId === userId;
+    const isParticipant = !isOwner &&
+      !!(await prisma.checklistParticipant.findUnique({ where: { checklistId_userId: { checklistId: item.checklistId, userId } } }));
+    if (!isOwner && !isParticipant) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+    const latest = await prisma.checklistRevision.findFirst({
+      where: { itemId, userId }, orderBy: { createdAt: "desc" },
+    });
+    if (latest) await prisma.checklistRevision.delete({ where: { id: latest.id } });
+
+    const remaining = await prisma.checklistRevision.count({ where: { itemId, userId } });
+    if (remaining === 0) {
+      await prisma.checklistProgress.upsert({
+        where: { itemId_userId: { itemId, userId } },
+        update: { done: false, doneAt: null },
+        create: { itemId, userId, done: false },
+      });
+    }
+    return NextResponse.json({ done: remaining > 0, revisionCount: remaining });
+  }
+
   // ── getSectionProgress (collab leaderboard per section) ───────────────────
   if (action === "getSectionProgress") {
     const { checklistId } = body;
@@ -314,7 +343,11 @@ export async function PATCH(req: Request) {
     const cl = await prisma.checklist.findUnique({ where: { id: checklistId } });
     if (!cl || cl.userId !== userId) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     let slug = cl.slug;
-    if (visibility !== "PRIVATE" && !slug) slug = await uniqueSlug(slugify(cl.name));
+    if (visibility !== "PRIVATE" && !slug) {
+      slug = await uniqueSlug(`${slugify(cl.name)}-${nanoid()}`);
+    } else if (visibility === "PRIVATE") {
+      slug = null;
+    }
     const updated = await prisma.checklist.update({ where: { id: checklistId }, data: { visibility, slug } });
     return NextResponse.json(updated);
   }

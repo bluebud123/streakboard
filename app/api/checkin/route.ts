@@ -3,38 +3,106 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { localDateKey } from "@/lib/streak";
 
+// POST — create a new log entry (multiple per day allowed)
 export async function POST(req: Request) {
   const session = await auth();
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { minutes, note } = await req.json();
-  const date = localDateKey(new Date());
+  const { minutes, note, studyTime, date: reqDate } = await req.json();
+  const date = reqDate ?? localDateKey(new Date());
 
-  const checkIn = await prisma.checkIn.upsert({
-    where: { userId_date: { userId: session.user.id, date } },
-    update: { minutes: minutes ?? 0, note: note ?? null },
-    create: { userId: session.user.id, date, minutes: minutes ?? 0, note: note ?? null },
+  const checkIn = await prisma.checkIn.create({
+    data: {
+      userId: session.user.id,
+      date,
+      minutes: minutes ?? 0,
+      note: note?.trim() || null,
+      studyTime: studyTime?.trim() || null,
+    },
   });
 
-  return NextResponse.json(checkIn);
+  return NextResponse.json({
+    id: checkIn.id,
+    date: checkIn.date,
+    minutes: checkIn.minutes,
+    note: checkIn.note,
+    studyTime: checkIn.studyTime,
+    createdAt: checkIn.createdAt.toISOString(),
+  });
 }
 
-export async function DELETE() {
+// PATCH — update a specific log entry by id
+export async function PATCH(req: Request) {
   const session = await auth();
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const date = localDateKey(new Date());
-  await prisma.checkIn.deleteMany({ where: { userId: session.user.id, date } });
+  const { id, minutes, note, studyTime } = await req.json();
+  if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
+
+  const log = await prisma.checkIn.findUnique({ where: { id } });
+  if (!log || log.userId !== session.user.id)
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  const updated = await prisma.checkIn.update({
+    where: { id },
+    data: {
+      minutes: minutes ?? log.minutes,
+      note: note !== undefined ? (note?.trim() || null) : log.note,
+      studyTime: studyTime !== undefined ? (studyTime?.trim() || null) : log.studyTime,
+    },
+  });
+
+  return NextResponse.json({
+    id: updated.id,
+    date: updated.date,
+    minutes: updated.minutes,
+    note: updated.note,
+    studyTime: updated.studyTime,
+    createdAt: updated.createdAt.toISOString(),
+  });
+}
+
+// DELETE — delete a specific log entry by ?id=
+export async function DELETE(req: Request) {
+  const session = await auth();
+  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { searchParams } = new URL(req.url);
+  const id = searchParams.get("id");
+  if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
+
+  const log = await prisma.checkIn.findUnique({ where: { id } });
+  if (!log || log.userId !== session.user.id)
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  await prisma.checkIn.delete({ where: { id } });
   return NextResponse.json({ ok: true });
 }
 
-export async function GET() {
+// GET — all logs (optionally ?date=YYYY-MM-DD)
+export async function GET(req: Request) {
   const session = await auth();
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const { searchParams } = new URL(req.url);
+  const dateFilter = searchParams.get("date");
+
   const checkIns = await prisma.checkIn.findMany({
-    where: { userId: session.user.id },
-    orderBy: { date: "desc" },
+    where: {
+      userId: session.user.id,
+      ...(dateFilter ? { date: dateFilter } : {}),
+    },
+    orderBy: [{ date: "desc" }, { createdAt: "desc" }],
   });
-  return NextResponse.json(checkIns);
+
+  return NextResponse.json(
+    checkIns.map((c) => ({
+      id: c.id,
+      date: c.date,
+      minutes: c.minutes,
+      note: c.note,
+      studyTime: c.studyTime,
+      createdAt: c.createdAt.toISOString(),
+    }))
+  );
 }

@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import ChecklistImport from "./ChecklistImport";
 import type { TemplateMetadata } from "@/app/api/templates/route";
+import { toast } from "sonner";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -50,7 +51,7 @@ const VIS_LABEL: Record<string, string> = {
   PRIVATE: "🔒 Private",
   PUBLIC_TEMPLATE: "🔗 Template",
   PUBLIC_COLLAB: "👥 Collab",
-  PUBLIC_EDIT: "✏️ Open Edit",
+  PUBLIC_EDIT: "🤝 Collab + Edit",
 };
 const VIS_DESCRIPTIONS: Record<string, string> = {
   PRIVATE: "Only you can see and edit this project.",
@@ -96,6 +97,21 @@ function addRevisionInTree(items: TreeItem[], itemId: string): TreeItem[] {
   return items.map((it) => {
     if (it.id === itemId) return { ...it, revisions: [{ createdAt: new Date().toISOString() }, ...it.revisions] };
     if (it.children?.length) return { ...it, children: addRevisionInTree(it.children, itemId) };
+    return it;
+  });
+}
+
+function removeRevisionFromTree(items: TreeItem[], itemId: string): TreeItem[] {
+  return items.map((it) => {
+    if (it.id === itemId) {
+      const newRevisions = it.revisions.slice(1); // remove most recent (stored desc)
+      return {
+        ...it,
+        revisions: newRevisions,
+        progress: newRevisions.length === 0 ? [{ done: false }] : it.progress,
+      };
+    }
+    if (it.children?.length) return { ...it, children: removeRevisionFromTree(it.children, itemId) };
     return it;
   });
 }
@@ -220,25 +236,16 @@ function TemplatePreview({ filename }: { filename: string }) {
   );
 }
 
-// ─── Revision Tooltip ─────────────────────────────────────────────────────────
+// ─── Revision date helpers ────────────────────────────────────────────────────
 
-function RevisionBadge({ revisions }: { revisions: Revision[] }) {
-  const [show, setShow] = useState(false);
+function latestRevisionShortDate(revisions: Revision[]): string | null {
   if (!revisions.length) return null;
-  return (
-    <span className="relative" onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)}>
-      <span className="text-xs text-amber-500/70 cursor-default select-none">×{revisions.length}</span>
-      {show && (
-        <div className="absolute bottom-full left-0 mb-1 z-10 bg-slate-800 border border-slate-700 rounded-lg p-2 text-xs text-slate-300 whitespace-nowrap shadow-xl">
-          <p className="font-medium text-amber-400 mb-1">Reviewed {revisions.length}×</p>
-          {revisions.slice(0, 6).map((r, i) => (
-            <p key={i} className="text-slate-400">{new Date(r.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</p>
-          ))}
-          {revisions.length > 6 && <p className="text-slate-600">+{revisions.length - 6} more</p>}
-        </div>
-      )}
-    </span>
-  );
+  const d = new Date(revisions[0].createdAt as unknown as string | Date);
+  const now = new Date();
+  if (d.getFullYear() === now.getFullYear()) {
+    return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  }
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "2-digit" });
 }
 
 // ─── Tree Item Renderer ───────────────────────────────────────────────────────
@@ -257,6 +264,7 @@ interface ItemNodeProps {
   onEditCancel: () => void;
   onCheck: (checklistId: string, itemId: string) => void;
   onUncheck: (checklistId: string, itemId: string) => void;
+  onRemoveRevision: (checklistId: string, itemId: string) => void;
   onDelete: (checklistId: string, itemId: string) => void;
   onAddChild: (parentId: string, depth: number) => void;
   addingTo: { checklistId: string; parentId: string | null; depth: number } | null;
@@ -264,12 +272,12 @@ interface ItemNodeProps {
   onNewItemChange: (v: string) => void;
   onAddSubmit: (checklistId: string) => void;
   onAddCancel: () => void;
-  dragOverRef: React.MutableRefObject<string | null>;
   onDragStart: (id: string) => void;
   onDragOver: (e: React.DragEvent, id: string) => void;
   onDrop: (targetId: string, parentId: string | null) => void;
   onDragEnd: () => void;
   dragId: string | null;
+  dragOverId: string | null;
   collabProgress?: CollabProgress | null;
 }
 
@@ -277,19 +285,15 @@ function ItemNode({
   item, checklistId, isOwner,
   collapsedIds, onToggleCollapse,
   editingId, editingText, onEditStart, onEditChange, onEditSave, onEditCancel,
-  onCheck, onUncheck, onDelete, onAddChild,
+  onCheck, onUncheck, onRemoveRevision, onDelete, onAddChild,
   addingTo, newItemText, onNewItemChange, onAddSubmit, onAddCancel,
-  dragOverRef, onDragStart, onDragOver, onDrop, onDragEnd, dragId,
+  onDragStart, onDragOver, onDrop, onDragEnd, dragId, dragOverId,
   collabProgress,
 }: ItemNodeProps) {
   const checked = item.progress[0]?.done ?? false;
   const isDragging = dragId === item.id;
+  const isDragOver = dragOverId === item.id && dragId !== item.id;
   const isCollapsed = collapsedIds.has(item.id);
-  const hasChildren = (item.children?.length ?? 0) > 0;
-  const isEditing = editingId === item.id;
-
-  const sectionStats = item.isSection ? countCheckable(item.children ?? []) : null;
-  const sectionCollab = item.isSection ? collabProgress?.sections.find(s => s.sectionId === item.id) : null;
 
   const commonProps = {
     draggable: isOwner,
@@ -298,14 +302,16 @@ function ItemNode({
     onDrop: () => onDrop(item.id, null),
     onDragEnd,
   };
+  const hasChildren = (item.children?.length ?? 0) > 0;
+  const isEditing = editingId === item.id;
+
+  const sectionStats = item.isSection ? countCheckable(item.children ?? []) : null;
+  const sectionCollab = item.isSection ? collabProgress?.sections.find(s => s.sectionId === item.id) : null;
 
   if (item.isSection) {
     return (
-      <div data-item-id={item.id} className={`mt-3 first:mt-0`}>
-        <div
-          className={`flex items-center gap-1.5 py-1.5 px-1 group ${isDragging ? "opacity-40" : ""}`}
-          {...commonProps}
-        >
+      <div data-item-id={item.id} className={`mt-3 first:mt-0 ${isDragOver ? "border-t-2 border-amber-500 rounded" : ""}`}>
+        <div className={`flex items-center gap-1.5 py-1.5 px-1 group ${isDragging ? "opacity-40" : ""}`} {...commonProps}>
           {/* Collapse toggle */}
           <button
             onClick={() => onToggleCollapse(item.id)}
@@ -342,6 +348,14 @@ function ItemNode({
           {/* Section progress */}
           {sectionStats && sectionStats.total > 0 && (
             <span className="text-xs text-slate-500 shrink-0 font-mono">{sectionStats.done}/{sectionStats.total}</span>
+          )}
+
+          {isOwner && !isEditing && (
+            <button
+              onClick={() => onEditStart(item.id, item.text)}
+              className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-slate-300 text-xs transition-all shrink-0"
+              title="Edit section name"
+            >✎</button>
           )}
 
           {isOwner && (
@@ -389,10 +403,9 @@ function ItemNode({
               <ItemNode key={child.id} item={child} checklistId={checklistId} isOwner={isOwner}
                 collapsedIds={collapsedIds} onToggleCollapse={onToggleCollapse}
                 editingId={editingId} editingText={editingText} onEditStart={onEditStart} onEditChange={onEditChange} onEditSave={onEditSave} onEditCancel={onEditCancel}
-                onCheck={onCheck} onUncheck={onUncheck} onDelete={onDelete} onAddChild={onAddChild}
+                onCheck={onCheck} onUncheck={onUncheck} onRemoveRevision={onRemoveRevision} onDelete={onDelete} onAddChild={onAddChild}
                 addingTo={addingTo} newItemText={newItemText} onNewItemChange={onNewItemChange} onAddSubmit={onAddSubmit} onAddCancel={onAddCancel}
-                dragOverRef={dragOverRef} onDragStart={onDragStart}
-                onDragOver={onDragOver} onDrop={(tid) => onDrop(tid, item.id)} onDragEnd={onDragEnd} dragId={dragId}
+                onDragStart={onDragStart} onDragOver={onDragOver} onDrop={(tid) => onDrop(tid, item.id)} onDragEnd={onDragEnd} dragId={dragId} dragOverId={dragOverId}
                 collabProgress={collabProgress}
               />
             ))}
@@ -425,12 +438,8 @@ function ItemNode({
   const indent = item.depth === 2 ? "ml-4" : "";
 
   return (
-    <div data-item-id={item.id} className={indent}>
-      <div
-        className={`flex items-center gap-1.5 group py-0.5 ${isDragging ? "opacity-40" : ""}`}
-        {...commonProps}
-        onDrop={() => onDrop(item.id, null)}
-      >
+    <div data-item-id={item.id} className={`${indent} ${isDragOver ? "border-t-2 border-amber-500 rounded" : ""}`}>
+      <div className={`flex items-center gap-1.5 group py-0.5 ${isDragging ? "opacity-40" : ""}`} {...commonProps}>
         {/* Collapse (only tasks with children) */}
         {hasChildren ? (
           <button onClick={() => onToggleCollapse(item.id)} className="text-slate-600 hover:text-slate-400 text-xs w-4 shrink-0">
@@ -442,15 +451,26 @@ function ItemNode({
 
         {isOwner && <span className="text-slate-600 text-xs opacity-0 group-hover:opacity-100 cursor-grab shrink-0">⠿</span>}
 
-        {/* Checkbox — click logs revision */}
+        {/* − button: remove last revision (undo accidental check) */}
+        {item.revisions.length > 0 ? (
+          <button
+            onClick={() => onRemoveRevision(checklistId, item.id)}
+            title={`Remove last revision (${item.revisions.length} logged)`}
+            className="w-6 h-6 flex items-center justify-center rounded-full border border-slate-600 hover:border-red-500 text-slate-400 hover:text-red-400 text-sm shrink-0 transition-colors leading-none"
+          >−</button>
+        ) : (
+          <span className="w-4 shrink-0" />
+        )}
+
+        {/* Checkbox — click always logs revision */}
         <input
           type="checkbox"
           checked={checked}
           onChange={() => onCheck(checklistId, item.id)}
-          className="w-4 h-4 rounded accent-amber-500 cursor-pointer shrink-0"
+          className="w-5 h-5 rounded accent-amber-500 cursor-pointer shrink-0"
         />
 
-        {/* Text — double-click to edit */}
+        {/* Text — double-click or pencil to edit */}
         {isEditing ? (
           <input
             autoFocus value={editingText} onChange={(e) => onEditChange(e.target.value)}
@@ -463,24 +483,33 @@ function ItemNode({
           />
         ) : (
           <span
-            className={`flex-1 text-sm leading-snug cursor-text ${checked ? "line-through text-slate-500" : item.depth === 2 ? "text-slate-400" : "text-slate-300"}`}
+            className={`flex-1 text-sm leading-snug ${checked ? "line-through text-slate-500" : item.depth === 2 ? "text-slate-400" : "text-slate-300"}`}
             onDoubleClick={() => isOwner && onEditStart(item.id, item.text)}
-            title={isOwner ? "Double-click to edit" : undefined}
           >
             {item.text}
           </span>
         )}
 
-        {/* Revision badge */}
-        {checked && <RevisionBadge revisions={item.revisions} />}
+        {/* Revision count + latest date */}
+        {item.revisions.length > 0 && !isEditing && (() => {
+          const dateStr = latestRevisionShortDate(item.revisions);
+          return (
+            <span
+              className="text-xs text-amber-500/60 shrink-0 font-mono whitespace-nowrap"
+              title={`Reviewed ${item.revisions.length}×. Unchecking keeps your history; use − to remove the last review entry.`}
+            >
+              +{item.revisions.length}{dateStr ? ` · ${dateStr}` : ""}
+            </span>
+          );
+        })()}
 
-        {/* Uncheck button (only for done items) */}
-        {checked && (
+        {/* Pencil edit button (always visible on hover for owners) */}
+        {isOwner && !isEditing && (
           <button
-            onClick={() => onUncheck(checklistId, item.id)}
-            title="Mark as not done"
-            className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-slate-300 text-xs transition-all shrink-0"
-          >↩</button>
+            onClick={() => onEditStart(item.id, item.text)}
+            className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-slate-300 text-xs transition-all shrink-0"
+            title="Edit"
+          >✎</button>
         )}
 
         {isOwner && (
@@ -498,10 +527,9 @@ function ItemNode({
             <ItemNode key={child.id} item={child} checklistId={checklistId} isOwner={isOwner}
               collapsedIds={collapsedIds} onToggleCollapse={onToggleCollapse}
               editingId={editingId} editingText={editingText} onEditStart={onEditStart} onEditChange={onEditChange} onEditSave={onEditSave} onEditCancel={onEditCancel}
-              onCheck={onCheck} onUncheck={onUncheck} onDelete={onDelete} onAddChild={onAddChild}
+              onCheck={onCheck} onUncheck={onUncheck} onRemoveRevision={onRemoveRevision} onDelete={onDelete} onAddChild={onAddChild}
               addingTo={addingTo} newItemText={newItemText} onNewItemChange={onNewItemChange} onAddSubmit={onAddSubmit} onAddCancel={onAddCancel}
-              dragOverRef={dragOverRef} onDragStart={onDragStart}
-              onDragOver={onDragOver} onDrop={(tid) => onDrop(tid, item.id)} onDragEnd={onDragEnd} dragId={dragId}
+              onDragStart={onDragStart} onDragOver={onDragOver} onDrop={(tid) => onDrop(tid, item.id)} onDragEnd={onDragEnd} dragId={dragId} dragOverId={dragOverId}
               collabProgress={collabProgress}
             />
           ))}
@@ -536,9 +564,12 @@ interface Props {
   owned: ChecklistData[];
   participating: ChecklistData[];
   userId: string;
+  onExpandChange?: (id: string | null) => void;
+  onOwnedChange?: (list: ChecklistData[]) => void;
+  onParticipatingChange?: (list: ChecklistData[]) => void;
 }
 
-export default function ChecklistSection({ owned: initialOwned, participating: initialParticipating, userId }: Props) {
+export default function ChecklistSection({ owned: initialOwned, participating: initialParticipating, userId, onExpandChange, onOwnedChange, onParticipatingChange }: Props) {
   const [owned, setOwned] = useState(initialOwned);
   const [participating] = useState(initialParticipating);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -562,10 +593,15 @@ export default function ChecklistSection({ owned: initialOwned, participating: i
   const [editingTitleId, setEditingTitleId] = useState<string | null>(null);
   const [editingTitleText, setEditingTitleText] = useState("");
 
-  // Drag — use ref for overId to avoid re-renders on every mouse move
+  // Drag state — dragIdRef avoids stale closure; ownedRef ensures drop handler sees latest state
   const [dragId, setDragId] = useState<string | null>(null);
+  const dragIdRef = useRef<string | null>(null);
   const dragOverRef = useRef<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const rafRef = useRef<number | null>(null);
   const dragChecklistId = useRef<string | null>(null);
+  const ownedRef = useRef(owned);
+  useEffect(() => { ownedRef.current = owned; }, [owned]);
 
   // Collab progress (lazy loaded per checklist)
   const [collabProgress, setCollabProgress] = useState<Record<string, CollabProgress>>({});
@@ -598,7 +634,11 @@ export default function ChecklistSection({ owned: initialOwned, participating: i
   }, [expanded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function patchOwned(id: string, updater: (cl: ChecklistData) => ChecklistData) {
-    setOwned((prev) => prev.map((cl) => (cl.id === id ? updater(cl) : cl)));
+    setOwned((prev) => {
+      const next = prev.map((cl) => (cl.id === id ? updater(cl) : cl));
+      onOwnedChange?.(next);
+      return next;
+    });
   }
 
   function openNew(mode: "blank" | "template" | "upload") {
@@ -626,7 +666,11 @@ export default function ChecklistSection({ owned: initialOwned, participating: i
       method: "PATCH", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "renameItem", itemId, text }),
     });
-    if (res.ok) patchOwned(checklistId, (c) => ({ ...c, items: renameInTree(c.items, itemId, text) }));
+    if (res.ok) {
+      patchOwned(checklistId, (c) => ({ ...c, items: renameInTree(c.items, itemId, text) }));
+    } else {
+      toast.error("Change not saved — please try again.");
+    }
   }
 
   // ── Check item (logs revision) ───────────────────────────────────────────
@@ -646,6 +690,22 @@ export default function ChecklistSection({ owned: initialOwned, participating: i
         ...c,
         items: toggleItemInTree(c.items, itemId, false),
       }));
+      toast.error("Change not saved — please try again.");
+    }
+  }
+
+  // ── Remove last revision (undo accidental check) ─────────────────────────
+  async function removeRevision(checklistId: string, itemId: string) {
+    // Optimistic: remove most recent revision from tree
+    patchOwned(checklistId, (c) => ({ ...c, items: removeRevisionFromTree(c.items, itemId) }));
+    const res = await fetch("/api/checklists", {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "removeLastRevision", itemId }),
+    });
+    if (!res.ok) {
+      // Revert: add revision back
+      patchOwned(checklistId, (c) => ({ ...c, items: addRevisionInTree(c.items, itemId) }));
+      toast.error("Change not saved — please try again.");
     }
   }
 
@@ -656,7 +716,10 @@ export default function ChecklistSection({ owned: initialOwned, participating: i
       method: "PATCH", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "uncheckItem", itemId }),
     });
-    if (!res.ok) patchOwned(checklistId, (c) => ({ ...c, items: toggleItemInTree(c.items, itemId, true) }));
+    if (!res.ok) {
+      patchOwned(checklistId, (c) => ({ ...c, items: toggleItemInTree(c.items, itemId, true) }));
+      toast.error("Change not saved — please try again.");
+    }
   }
 
   // ── Delete item ──────────────────────────────────────────────────────────
@@ -666,7 +729,11 @@ export default function ChecklistSection({ owned: initialOwned, participating: i
       method: "PATCH", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "deleteItem", itemId }),
     });
-    if (res.ok) patchOwned(checklistId, (c) => ({ ...c, items: removeItemFromTree(c.items, itemId) }));
+    if (res.ok) {
+      patchOwned(checklistId, (c) => ({ ...c, items: removeItemFromTree(c.items, itemId) }));
+    } else {
+      toast.error("Failed to delete item — please try again.");
+    }
   }
 
   // ── Delete project ───────────────────────────────────────────────────────
@@ -676,7 +743,11 @@ export default function ChecklistSection({ owned: initialOwned, participating: i
       method: "PATCH", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "delete", checklistId }),
     });
-    if (res.ok) setOwned((prev) => prev.filter((cl) => cl.id !== checklistId));
+    if (res.ok) {
+      setOwned((prev) => { const next = prev.filter((cl) => cl.id !== checklistId); onOwnedChange?.(next); return next; });
+    } else {
+      toast.error("Failed to delete project — please try again.");
+    }
   }
 
   // ── Add item ─────────────────────────────────────────────────────────────
@@ -691,6 +762,8 @@ export default function ChecklistSection({ owned: initialOwned, participating: i
       const newItem: TreeItem = { ...raw, progress: [], revisions: [], children: [] };
       patchOwned(checklistId, (c) => ({ ...c, items: addItemToTree(c.items, addingTo.parentId, newItem) }));
       setNewItemText(""); setAddingTo(null);
+    } else {
+      toast.error("Failed to add item — please try again.");
     }
   }
 
@@ -703,7 +776,11 @@ export default function ChecklistSection({ owned: initialOwned, participating: i
       method: "PATCH", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "renameChecklist", checklistId, name }),
     });
-    if (res.ok) patchOwned(checklistId, (c) => ({ ...c, name }));
+    if (res.ok) {
+      patchOwned(checklistId, (c) => ({ ...c, name }));
+    } else {
+      toast.error("Failed to rename project — please try again.");
+    }
   }
 
   // ── Create blank project ─────────────────────────────────────────────────
@@ -716,8 +793,11 @@ export default function ChecklistSection({ owned: initialOwned, participating: i
     });
     if (res.ok) {
       const raw = await res.json();
-      setOwned((prev) => [normaliseChecklist(raw), ...prev]);
+      setOwned((prev) => { const next = [normaliseChecklist(raw), ...prev]; onOwnedChange?.(next); return next; });
       setNewName(""); setNewDesc(""); setNewMode("none");
+      toast.success("Project created!");
+    } else {
+      toast.error("Failed to create project — please try again.");
     }
   }
 
@@ -733,17 +813,26 @@ export default function ChecklistSection({ owned: initialOwned, participating: i
       const res = await fetch("/api/checklists/import", { method: "POST", body: form });
       const isJson = res.headers.get("content-type")?.includes("application/json");
       const data = isJson ? await res.json() : { error: "Server error" };
-      if (!res.ok) { setTemplateError(data.error || "Import failed"); return; }
-      setOwned((prev) => [normaliseChecklist(data), ...prev]);
+      if (!res.ok) {
+        setTemplateError(data.error || "Import failed");
+        toast.error(data.error || "Import failed");
+        return;
+      }
+      setOwned((prev) => { const next = [normaliseChecklist(data), ...prev]; onOwnedChange?.(next); return next; });
       setNewMode("none");
-    } catch { setTemplateError("Failed to import template — please try again"); }
+      toast.success("Template imported!");
+    } catch {
+      setTemplateError("Failed to import template — please try again");
+      toast.error("Failed to import template — please try again");
+    }
     finally { setUsingTemplate(null); }
   }
 
   // ── Imported via upload ──────────────────────────────────────────────────
   function handleImported(raw: unknown) {
-    setOwned((prev) => [normaliseChecklist(raw as Record<string, unknown>), ...prev]);
+    setOwned((prev) => { const next = [normaliseChecklist(raw as Record<string, unknown>), ...prev]; onOwnedChange?.(next); return next; });
     setNewMode("none");
+    toast.success("Project imported!");
   }
 
   // ── Visibility change ────────────────────────────────────────────────────
@@ -755,28 +844,46 @@ export default function ChecklistSection({ owned: initialOwned, participating: i
     if (res.ok) {
       const updated = await res.json();
       patchOwned(cl.id, () => ({ ...cl, visibility: updated.visibility, slug: updated.slug }));
+      toast.success("Visibility updated!");
+    } else {
+      toast.error("Failed to update visibility — please try again.");
     }
     setVisModal(null);
   }
 
-  // ── Drag and drop (useRef for overId — no re-render on every move) ────────
+  // ── HTML5 drag handlers (ownedRef avoids stale closure in handleDrop) ──────
   const handleDragStart = useCallback((checklistId: string, itemId: string) => {
     dragChecklistId.current = checklistId;
+    dragIdRef.current = itemId;
     setDragId(itemId);
     dragOverRef.current = null;
+    setDragOverId(null);
   }, []);
 
   const handleDragOver = useCallback((e: React.DragEvent, itemId: string) => {
     e.preventDefault();
     dragOverRef.current = itemId;
+    if (rafRef.current !== null) return;
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null;
+      setDragOverId(dragOverRef.current);
+    });
+  }, []);
+
+  const handleDragEnd = useCallback(() => {
+    dragIdRef.current = null;
+    setDragId(null);
+    setDragOverId(null);
+    dragOverRef.current = null;
+    if (rafRef.current !== null) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
   }, []);
 
   const handleDrop = useCallback((checklistId: string, targetId: string, parentId: string | null) => {
-    const dragItemId = dragId;
-    setDragId(null);
-    dragOverRef.current = null;
+    const dragItemId = dragIdRef.current;
+    handleDragEnd();
     if (!dragItemId || dragItemId === targetId) return;
-    const cl = owned.find((c) => c.id === checklistId);
+
+    const cl = ownedRef.current.find((c) => c.id === checklistId); // use ref — always current
     if (!cl) return;
 
     const list = parentId ? (findItem(cl.items, parentId)?.children ?? []) : cl.items;
@@ -791,7 +898,13 @@ export default function ChecklistSection({ owned: initialOwned, participating: i
 
     function applyReorder(items: TreeItem[]): TreeItem[] {
       if (!parentId) return reordered;
-      return items.map((it) => it.id === parentId ? { ...it, children: reordered } : it.children?.length ? { ...it, children: applyReorder(it.children) } : it);
+      return items.map((it) =>
+        it.id === parentId
+          ? { ...it, children: reordered }
+          : it.children?.length
+          ? { ...it, children: applyReorder(it.children) }
+          : it
+      );
     }
     patchOwned(checklistId, (c) => ({ ...c, items: applyReorder(c.items) }));
 
@@ -799,7 +912,7 @@ export default function ChecklistSection({ owned: initialOwned, participating: i
       method: "PATCH", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "reorderItems", checklistId, orderedIds }),
     }).catch(() => {});
-  }, [dragId, owned]);
+  }, [handleDragEnd]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -898,7 +1011,7 @@ export default function ChecklistSection({ owned: initialOwned, participating: i
             <div key={cl.id} className="bg-slate-800 rounded-xl overflow-hidden">
               {/* Card header */}
               <div className="px-4 py-3 flex items-center gap-2">
-                <button onClick={() => setExpanded(isOpen ? null : cl.id)} className="shrink-0 text-slate-400 hover:text-slate-200 text-sm">
+                <button onClick={() => { const next = isOpen ? null : cl.id; setExpanded(next); onExpandChange?.(next); }} className="shrink-0 text-slate-400 hover:text-slate-200 text-sm">
                   {isOpen ? "▾" : "▸"}
                 </button>
 
@@ -997,6 +1110,7 @@ export default function ChecklistSection({ owned: initialOwned, participating: i
                       onEditCancel={cancelEdit}
                       onCheck={checkItem}
                       onUncheck={uncheckItem}
+                      onRemoveRevision={removeRevision}
                       onDelete={deleteItem}
                       onAddChild={(parentId, depth) => { setAddingTo({ checklistId: cl.id, parentId, depth }); setNewItemText(""); }}
                       addingTo={addingTo}
@@ -1004,12 +1118,12 @@ export default function ChecklistSection({ owned: initialOwned, participating: i
                       onNewItemChange={setNewItemText}
                       onAddSubmit={submitAddItem}
                       onAddCancel={() => setAddingTo(null)}
-                      dragOverRef={dragOverRef}
                       onDragStart={(id) => handleDragStart(cl.id, id)}
                       onDragOver={handleDragOver}
                       onDrop={(targetId, parentId) => handleDrop(cl.id, targetId, parentId)}
-                      onDragEnd={() => { setDragId(null); dragOverRef.current = null; }}
+                      onDragEnd={handleDragEnd}
                       dragId={dragId}
+                      dragOverId={dragOverId}
                       collabProgress={progress}
                     />
                   ))}

@@ -62,13 +62,34 @@ export default async function DashboardPage() {
   const dates = checkIns.map((c) => c.date);
   const streaks = calcStreaks(dates);
   const today = localDateKey(new Date());
-  const todayCheckIn = checkIns.find((c) => c.date === today) ?? null;
+
+  // Serialize DateTime → ISO string for client component
+  const allCheckIns = checkIns.map((c) => ({
+    id: c.id,
+    date: c.date,
+    minutes: c.minutes,
+    note: c.note,
+    studyTime: (c as { studyTime?: string | null }).studyTime ?? null,
+    createdAt: c.createdAt.toISOString(),
+  }));
+
+  const todayLogs = allCheckIns.filter((c) => c.date === today);
+
+  // Ensure all fields are plain serializable values
+  const serializedUser = {
+    name: user.name ?? "",
+    username: user.username ?? "",
+    studyingFor: user.studyingFor ?? "",
+    examDate: user.examDate ?? null,
+    isAdmin: user.isAdmin,
+  };
 
   return (
     <DashboardClient
-      user={user}
+      user={serializedUser}
       streaks={streaks}
-      todayCheckIn={todayCheckIn}
+      todayLogs={todayLogs}
+      allCheckIns={allCheckIns}
       username={(session.user as { username: string }).username}
       ownedChecklists={ownedChecklists as never}
       participatingChecklists={participatingChecklists as never}

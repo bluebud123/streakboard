@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db";
 import { auth } from "@/auth";
 import Link from "next/link";
-import DiscoverClient from "./DiscoverClient";
+import DiscoverList from "./DiscoverList";
 
 export const metadata = {
   title: "Explore Projects — Streakboard",
@@ -13,7 +13,14 @@ export default async function DiscoverPage() {
 
   const projects = await prisma.checklist.findMany({
     where: { visibility: { in: ["PUBLIC_TEMPLATE", "PUBLIC_COLLAB", "PUBLIC_EDIT"] } },
-    include: {
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      slug: true,
+      visibility: true,
+      userId: true,
+      createdAt: true,
       user: { select: { name: true, username: true } },
       items: { select: { id: true } },
       participants: { select: { userId: true } },
@@ -29,6 +36,7 @@ export default async function DiscoverPage() {
   const cards = projects.map((p) => ({
     id: p.id,
     name: p.name,
+    description: p.description,
     slug: p.slug,
     visibility: p.visibility,
     ownerName: p.user.name,
@@ -38,9 +46,6 @@ export default async function DiscoverPage() {
     isParticipating: viewerParticipating.has(p.id),
     isOwner: session?.user?.id === p.userId,
   }));
-
-  const templates = cards.filter((c) => c.visibility === "PUBLIC_TEMPLATE");
-  const open = cards.filter((c) => c.visibility === "PUBLIC_COLLAB" || c.visibility === "PUBLIC_EDIT");
 
   return (
     <div className="min-h-screen">
@@ -67,54 +72,7 @@ export default async function DiscoverPage() {
           </p>
         </div>
 
-        {/* Community Templates */}
-        <section>
-          <h2 className="text-lg font-semibold text-slate-200 mb-4">
-            📋 Community Templates
-            <span className="ml-2 text-sm font-normal text-slate-500">({templates.length})</span>
-          </h2>
-
-          {templates.length === 0 ? (
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center">
-              <p className="text-slate-500 text-sm">No public templates yet.</p>
-              <p className="text-slate-600 text-xs mt-1">
-                Be the first! Create a project on your{" "}
-                <Link href={session ? "/dashboard" : "/signup"} className="text-amber-400 hover:text-amber-300">dashboard</Link>
-                {" "}and set it to Template visibility.
-              </p>
-            </div>
-          ) : (
-            <div className="grid sm:grid-cols-2 gap-4">
-              {templates.map((c) => (
-                <DiscoverClient key={c.id} card={c} isLoggedIn={!!session} />
-              ))}
-            </div>
-          )}
-        </section>
-
-        {/* Open Projects */}
-        <section>
-          <h2 className="text-lg font-semibold text-slate-200 mb-4">
-            👥 Open Projects
-            <span className="ml-2 text-sm font-normal text-slate-500">({open.length})</span>
-          </h2>
-
-          {open.length === 0 ? (
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center">
-              <p className="text-slate-500 text-sm">No open projects yet.</p>
-              <p className="text-slate-600 text-xs mt-1">
-                Set a project to <strong className="text-slate-400">Collab</strong> or{" "}
-                <strong className="text-slate-400">Open Edit</strong> visibility to appear here.
-              </p>
-            </div>
-          ) : (
-            <div className="grid sm:grid-cols-2 gap-4">
-              {open.map((c) => (
-                <DiscoverClient key={c.id} card={c} isLoggedIn={!!session} />
-              ))}
-            </div>
-          )}
-        </section>
+        <DiscoverList cards={cards} isLoggedIn={!!session} />
       </main>
     </div>
   );

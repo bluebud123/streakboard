@@ -1,4 +1,6 @@
 import { notFound } from "next/navigation";
+import { prisma } from "@/lib/db";
+import { calcStreaks, buildHeatmap, calcStudyStats } from "@/lib/streak";
 import Heatmap from "@/components/Heatmap";
 import StreakStats from "@/components/StreakStats";
 import ExamCountdown from "@/components/ExamCountdown";
@@ -6,32 +8,68 @@ import ChecklistCard from "@/components/ChecklistCard";
 import ShareBanner from "@/components/ShareBanner";
 import Link from "next/link";
 
-interface ProfileData {
-  name: string;
-  username: string;
-  studyingFor: string;
-  examDate: string | null;
-  streaks: { currentStreak: number; longestStreak: number; totalDays: number };
-  heatmap: { date: string; level: 0 | 1 | 2 | 3; minutes: number }[];
-  study: { weekHours: number; allTimeHours: number };
-  checklists: { id: string; name: string; slug: string | null; visibility: string; done: number; total: number }[];
-}
+async function getProfile(username: string) {
+  const user = await prisma.user.findUnique({
+    where: { username },
+    select: {
+      id: true,
+      name: true,
+      username: true,
+      studyingFor: true,
+      examDate: true,
+      isPublic: true,
+      checkIns: { select: { date: true, minutes: true } },
+      checklists: {
+        where: { visibility: { in: ["PUBLIC_TEMPLATE", "PUBLIC_COLLAB", "PUBLIC_EDIT"] } },
+        select: {
+          id: true, name: true, slug: true, visibility: true,
+          items: { select: { id: true, isSection: true, progress: { select: { userId: true, done: true } } } },
+        },
+        orderBy: { createdAt: "desc" },
+      },
+    },
+  });
 
-async function getProfile(username: string): Promise<ProfileData | null> {
-  const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
-  const res = await fetch(`${baseUrl}/api/profile/${username}`, { cache: "no-store" });
-  if (!res.ok) return null;
-  return res.json();
+  if (!user || !user.isPublic) return null;
+
+  const dates = user.checkIns.map((c) => c.date);
+  const streaks = calcStreaks(dates);
+  const heatmap = buildHeatmap(user.checkIns);
+  const study = calcStudyStats(user.checkIns);
+
+  const checklists = user.checklists.map((cl) => ({
+    id: cl.id,
+    name: cl.name,
+    slug: cl.slug,
+    visibility: cl.visibility,
+    done: cl.items.filter((it) => !it.isSection && it.progress.some((p) => p.userId === user.id && p.done)).length,
+    total: cl.items.filter((it) => !it.isSection).length,
+  }));
+
+  return {
+    name: user.name,
+    username: user.username,
+    studyingFor: user.studyingFor,
+    examDate: user.examDate,
+    streaks,
+    heatmap,
+    study,
+    checklists,
+  };
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ username: string }> }) {
   const { username } = await params;
-  const profile = await getProfile(username);
-  if (!profile) return { title: "Profile not found — Streakboard" };
-  return {
-    title: `${profile.name} — ${profile.streaks.currentStreak} day streak | Streakboard`,
-    description: `${profile.name} is studying for ${profile.studyingFor}. ${profile.streaks.currentStreak} day streak, ${profile.streaks.totalDays} days logged.`,
-  };
+  try {
+    const profile = await getProfile(username);
+    if (!profile) return { title: "Profile not found — Streakboard" };
+    return {
+      title: `${profile.name} — ${profile.streaks.currentStreak} day streak | Streakboard`,
+      description: `${profile.name} is studying for ${profile.studyingFor}. ${profile.streaks.currentStreak} day streak, ${profile.streaks.totalDays} days logged.`,
+    };
+  } catch {
+    return { title: "Streakboard" };
+  }
 }
 
 export default async function PublicProfilePage({ params }: { params: Promise<{ username: string }> }) {
