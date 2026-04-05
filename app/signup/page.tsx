@@ -100,55 +100,62 @@ function SignupForm() {
   const canSubmit = !loading && usernameStatus !== "taken" && usernameStatus !== "checking";
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 py-8">
+    <div className="min-h-screen bg-slate-950 flex items-center justify-center px-4 py-12 animate-fadeIn">
       <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <Link href="/" className="text-2xl font-bold text-amber-400">Streakboard</Link>
-          <p className="text-slate-400 mt-2 text-sm">
+        <div className="text-center mb-10">
+          <Link href="/" className="inline-block group transition-all duration-300 hover:scale-105">
+            <span className="text-3xl font-black text-amber-500 tracking-tighter">Streakboard</span>
+          </Link>
+          <p className="text-slate-500 mt-2 text-sm font-medium">
             {pendingMigration ? "Save your progress by creating a free account" : "Create your free account"}
           </p>
         </div>
 
         {pendingMigration && (
-          <div className="mb-4 bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3 text-sm text-amber-300">
+          <div className="mb-6 bg-amber-500/10 border border-amber-500/30 rounded-2xl px-5 py-3 text-sm text-amber-300 shadow-lg shadow-amber-500/5 animate-fadeIn">
             Your guest data will be saved to your new account automatically.
           </div>
         )}
 
-        <form onSubmit={submit} className="bg-slate-900 border border-slate-800 rounded-2xl p-8 space-y-4">
+        <form onSubmit={submit} className="bg-slate-900 border border-slate-800 rounded-3xl p-8 space-y-6 shadow-2xl hover:border-slate-700 transition-all duration-300">
           <Field label="Full name" type="text" value={form.name} onChange={set("name")} required placeholder="Alex Johnson" />
-          <div>
-            <label className="block text-sm text-slate-300 mb-1">Username</label>
+          
+          <div className="space-y-2">
+            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Username</label>
             <input
               type="text" required value={form.username} onChange={set("username")}
               placeholder="alexj"
-              className={`w-full bg-slate-800 border rounded-lg px-3 py-2.5 text-slate-100 placeholder-slate-500 focus:outline-none transition-colors text-sm ${
-                usernameStatus === "taken" ? "border-red-500 focus:border-red-500" :
-                usernameStatus === "available" ? "border-emerald-500 focus:border-emerald-500" :
+              className={`w-full bg-slate-800 border rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-amber-500/30 transition-all text-sm ${
+                usernameStatus === "taken" ? "border-red-500/50 focus:border-red-500" :
+                usernameStatus === "available" ? "border-emerald-500/50 focus:border-emerald-500" :
                 "border-slate-700 focus:border-amber-500"
               }`}
             />
-            <p className="text-xs mt-1">{usernameHint()}</p>
+            <p className="text-[10px] font-bold uppercase tracking-tighter ml-1">{usernameHint()}</p>
           </div>
-          <Field label="Email" type="email" value={form.email} onChange={set("email")} required placeholder="you@example.com" />
-          <Field label="Password" type="password" value={form.password} onChange={set("password")} required placeholder="Min 8 characters" />
-          <Field label="Studying for" type="text" value={form.studyingFor} onChange={set("studyingFor")} required placeholder="e.g. USMLE Step 1, AWS SAA, Bar Exam" />
-          <Field label="Exam date (optional)" type="date" value={form.examDate} onChange={set("examDate")} />
 
-          {error && <p className="text-red-400 text-sm bg-red-400/10 rounded-lg px-3 py-2">{error}</p>}
+          <Field label="Email address" type="email" value={form.email} onChange={set("email")} required placeholder="you@example.com" />
+          <Field label="Password" type="password" value={form.password} onChange={set("password")} required placeholder="Min 8 characters" />
+          
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Studying for" type="text" value={form.studyingFor} onChange={set("studyingFor")} required placeholder="e.g. Bar Exam" />
+            <Field label="Exam date" type="date" value={form.examDate} onChange={set("examDate")} className="[color-scheme:dark]" />
+          </div>
+
+          {error && <p className="text-red-400 text-xs font-bold uppercase tracking-tighter bg-red-400/10 rounded-xl px-4 py-2.5 border border-red-400/20 animate-fadeIn">{error}</p>}
 
           <button
             type="submit"
             disabled={!canSubmit}
-            className="w-full py-3 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-bold rounded-xl transition-colors"
+            className="w-full py-4 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-black rounded-2xl transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-amber-500/10 mt-2"
           >
             {loading ? "Creating account…" : "Create my Streakboard →"}
           </button>
         </form>
 
-        <p className="text-center text-slate-500 mt-4 text-sm">
+        <p className="text-center text-slate-500 mt-8 text-sm font-medium">
           Already have an account?{" "}
-          <Link href="/login" className="text-amber-400 hover:text-amber-300">Sign in</Link>
+          <Link href="/login" className="text-amber-500 hover:text-amber-400 transition-colors font-bold">Sign in</Link>
         </p>
       </div>
     </div>
@@ -157,21 +164,21 @@ function SignupForm() {
 
 export default function SignupPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><p className="text-slate-400">Loading…</p></div>}>
+    <Suspense fallback={<div className="min-h-screen bg-slate-950 flex items-center justify-center"><p className="text-slate-500 font-bold uppercase tracking-widest animate-pulse">Loading…</p></div>}>
       <SignupForm />
     </Suspense>
   );
 }
 
 function Field({
-  label, ...props
+  label, className = "", ...props
 }: { label: string } & React.InputHTMLAttributes<HTMLInputElement>) {
   return (
-    <div>
-      <label className="block text-sm text-slate-300 mb-1">{label}</label>
+    <div className="space-y-2">
+      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">{label}</label>
       <input
         {...props}
-        className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2.5 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500 transition-colors text-sm"
+        className={`w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/30 transition-all text-sm ${className}`}
       />
     </div>
   );

@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import Link from "next/link";
+import AppHeader from "@/components/AppHeader";
 
 interface CheckIn {
   id: string;
@@ -244,7 +245,8 @@ export default function LogsClient({ initialLogs }: Props) {
   const currentProjectNames = activeTab === "project-notes" ? allProjectNames : tabProjectNames;
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 p-4 md:p-12 animate-fadeIn">
+    <div className="min-h-screen bg-slate-950 text-slate-100 animate-fadeIn">
+      <AppHeader />
       <div className="max-w-2xl mx-auto">
         {/* Back */}
         <div className="flex items-center gap-4 mb-6">

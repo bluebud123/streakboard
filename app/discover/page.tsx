@@ -24,8 +24,9 @@ export default async function DiscoverPage() {
       user: { select: { name: true, username: true } },
       items: { select: { id: true } },
       participants: { select: { userId: true } },
+      likes: { select: { userId: true, type: true } },
     },
-    orderBy: [{ participants: { _count: "desc" } }, { createdAt: "desc" }],
+    orderBy: [{ likes: { _count: "desc" } }, { participants: { _count: "desc" } }, { createdAt: "desc" }],
     take: 60,
   });
 
@@ -45,6 +46,9 @@ export default async function DiscoverPage() {
     participantCount: p.participants.length,
     isParticipating: viewerParticipating.has(p.id),
     isOwner: session?.user?.id === p.userId,
+    likeCount: p.likes.filter((l) => l.type === "LIKE").length,
+    dislikeCount: p.likes.filter((l) => l.type === "DISLIKE").length,
+    myVote: session?.user?.id ? (p.likes.find((l) => l.userId === session.user!.id)?.type ?? null) : null,
   }));
 
   return (

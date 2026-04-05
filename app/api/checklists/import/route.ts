@@ -140,9 +140,27 @@ export async function POST(req: Request) {
     }
 
     // Create the checklist shell first
+    let ownerId = session.user.id;
+    let visibility = "PRIVATE";
+    const isOrtho = file.name === "orthopaedic-surgery.md";
+
+    if (isOrtho) {
+      // Find user @blue (fallback to current if not found)
+      const blue = await prisma.user.findUnique({ where: { username: "blue" } });
+      if (blue) ownerId = blue.id;
+      visibility = "PUBLIC_EDIT";
+    }
+
     const checklist = await prisma.checklist.create({
-      data: { userId: session.user.id, name: parsed.name },
+      data: { userId: ownerId, name: parsed.name, visibility },
     });
+
+    // If we changed the owner, add the current user as a participant so it shows up in their dashboard
+    if (isOrtho && ownerId !== session.user.id) {
+      await prisma.checklistParticipant.create({
+        data: { checklistId: checklist.id, userId: session.user.id },
+      });
+    }
 
     // Create items hierarchically
     await createTree(checklist.id, parsed.tree, null, 0);

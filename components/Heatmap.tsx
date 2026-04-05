@@ -41,7 +41,7 @@ export default function Heatmap({ cells }: { cells: Cell[] }) {
               <div
                 key={cell.date}
                 title={`${cell.date}${cell.minutes ? ` · ${cell.minutes} min` : ""}`}
-                className={`aspect-square rounded-sm ${levelClass[cell.level]}`}
+                className={`aspect-square rounded-sm ${levelClass[cell.level]} transition-all duration-100 hover:ring-1 hover:ring-amber-400/60 hover:scale-110 hover:z-10`}
               />
             )
           )}

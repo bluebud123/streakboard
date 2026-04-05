@@ -16,6 +16,9 @@ interface CardData {
   participantCount: number;
   isParticipating: boolean;
   isOwner: boolean;
+  likeCount: number;
+  dislikeCount: number;
+  myVote: string | null;
 }
 
 const VIS_LABEL: Record<string, string> = {
@@ -30,6 +33,27 @@ export default function DiscoverClient({ card, isLoggedIn }: { card: CardData; i
   const [done, setDone] = useState(false);
   const [joined, setJoined] = useState(card.isParticipating);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [likes, setLikes] = useState(card.likeCount);
+  const [dislikes, setDislikes] = useState(card.dislikeCount);
+  const [myVote, setMyVote] = useState<string | null>(card.myVote);
+  const [voting, setVoting] = useState(false);
+
+  async function handleVote(type: "LIKE" | "DISLIKE") {
+    if (!isLoggedIn) { router.push("/signup"); return; }
+    setVoting(true);
+    const res = await fetch(`/api/checklists/${card.id}/like`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      setLikes(data.likes);
+      setDislikes(data.dislikes);
+      setMyVote(data.removed ? null : type);
+    }
+    setVoting(false);
+  }
 
   const isTemplate = card.visibility === "PUBLIC_TEMPLATE";
   const actionLabel = isTemplate ? "Copy to my account" : "Join project";
@@ -94,6 +118,26 @@ export default function DiscoverClient({ card, isLoggedIn }: { card: CardData; i
       <div className="flex items-center gap-4 text-xs text-slate-500">
         <span>📋 {card.itemCount} items</span>
         {!isTemplate && <span>👥 {card.participantCount} participants</span>}
+      </div>
+
+      {/* Like / Dislike */}
+      <div className="flex items-center gap-2 mt-auto pt-2 border-t border-slate-800/60">
+        <button
+          onClick={() => handleVote("LIKE")}
+          disabled={voting}
+          title={isLoggedIn ? (myVote === "LIKE" ? "Unlike" : "Like this project") : "Sign in to vote"}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${myVote === "LIKE" ? "bg-amber-500/20 text-amber-400 border border-amber-500/40" : "bg-slate-800 text-slate-400 hover:text-amber-400 hover:bg-slate-700 border border-slate-700"}`}
+        >
+          👍 <span>{likes}</span>
+        </button>
+        <button
+          onClick={() => handleVote("DISLIKE")}
+          disabled={voting}
+          title={isLoggedIn ? (myVote === "DISLIKE" ? "Remove dislike" : "Dislike") : "Sign in to vote"}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${myVote === "DISLIKE" ? "bg-red-500/20 text-red-400 border border-red-500/40" : "bg-slate-800 text-slate-400 hover:text-red-400 hover:bg-slate-700 border border-slate-700"}`}
+        >
+          👎 <span>{dislikes}</span>
+        </button>
       </div>
 
       {/* Action */}

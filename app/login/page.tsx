@@ -31,46 +31,49 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4">
+    <div className="min-h-screen bg-slate-950 flex items-center justify-center px-4 animate-fadeIn">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <Link href="/" className="text-2xl font-bold text-amber-400">Streakboard</Link>
-          <p className="text-slate-400 mt-2 text-sm">Sign in to your account</p>
+          <Link href="/" className="inline-block group transition-all duration-300 hover:scale-105">
+            <span className="text-3xl font-black text-amber-500 tracking-tighter">Streakboard</span>
+          </Link>
+          <p className="text-slate-500 mt-2 text-sm font-medium">Sign in to your account</p>
         </div>
 
-        <form onSubmit={submit} className="bg-slate-900 border border-slate-800 rounded-2xl p-8 space-y-4">
-          <div>
-            <label className="block text-sm text-slate-300 mb-1">Username</label>
+        <form onSubmit={submit} className="bg-slate-900 border border-slate-800 rounded-3xl p-8 space-y-6 shadow-2xl hover:border-slate-700 transition-all duration-300">
+          <div className="space-y-2">
+            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Username</label>
             <input
               type="text" required value={username} onChange={(e) => setUsername(e.target.value)}
               placeholder="yourname"
-              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2.5 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500 transition-colors text-sm"
+              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/30 transition-all text-sm"
             />
           </div>
-          <div>
-            <label className="block text-sm text-slate-300 mb-1">Password</label>
+          <div className="space-y-2">
+            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Password</label>
             <input
               type="password" required value={password} onChange={(e) => setPassword(e.target.value)}
               placeholder="Your password"
-              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2.5 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500 transition-colors text-sm"
+              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/30 transition-all text-sm"
             />
           </div>
 
-          {error && <p className="text-red-400 text-sm bg-red-400/10 rounded-lg px-3 py-2">{error}</p>}
+          {error && <p className="text-red-400 text-xs font-bold uppercase tracking-tighter bg-red-400/10 rounded-xl px-4 py-2.5 border border-red-400/20 animate-fadeIn">{error}</p>}
 
           <button
             type="submit" disabled={loading}
-            className="w-full py-3 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-bold rounded-xl transition-colors"
+            className="w-full py-3.5 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-black rounded-2xl transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-amber-500/10 mt-2"
           >
-            {loading ? "Signing in…" : "Sign in"}
+            {loading ? "Signing in…" : "Sign In"}
           </button>
         </form>
 
-        <p className="text-center text-slate-500 mt-4 text-sm">
+        <p className="text-center text-slate-500 mt-6 text-sm font-medium">
           No account?{" "}
-          <Link href="/signup" className="text-amber-400 hover:text-amber-300">Create one free</Link>
+          <Link href="/signup" className="text-amber-500 hover:text-amber-400 transition-colors font-bold">Create one free</Link>
         </p>
       </div>
     </div>
   );
+
 }

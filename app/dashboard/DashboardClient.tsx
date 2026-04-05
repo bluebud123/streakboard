@@ -461,15 +461,22 @@ export default function DashboardClient({
     setTimeout(() => setCopied(false), 2000);
   }
 
-  function handleSectionClick(id: string) {
-    const el = document.querySelector(`[data-item-id="${id}"]`);
-    if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "center" });
-      el.classList.add("ring-2", "ring-amber-500", "ring-offset-2", "ring-offset-slate-900", "rounded");
-      setTimeout(() => {
-        el.classList.remove("ring-2", "ring-amber-500", "ring-offset-2", "ring-offset-slate-900", "rounded");
-      }, 2000);
+  function handleSectionClick(sectionId: string, projectId?: string) {
+    // If project isn't expanded yet, expand it first then scroll
+    if (projectId && expandedProjectId !== projectId) {
+      setExpandedProjectId(projectId);
     }
+    // Scroll after a short delay to let React render the expanded content
+    setTimeout(() => {
+      const el = document.querySelector(`[data-item-id="${sectionId}"]`);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        el.classList.add("ring-2", "ring-amber-500", "ring-offset-2", "ring-offset-slate-900", "rounded");
+        setTimeout(() => {
+          el.classList.remove("ring-2", "ring-amber-500", "ring-offset-2", "ring-offset-slate-900", "rounded");
+        }, 2000);
+      }
+    }, 200);
   }
 
   // Deadline stat card — show selected project deadline, or most urgent upcoming deadline, or days logged

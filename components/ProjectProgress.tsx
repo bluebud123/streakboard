@@ -6,7 +6,7 @@ interface Props {
   projects: (ChecklistData & { isOwner: boolean })[];
   expandedId: string | null;
   onSelect: (id: string) => void;
-  onSectionClick?: (sectionId: string) => void;
+  onSectionClick?: (sectionId: string, projectId: string) => void;
   onCountdownClick?: (projectId: string) => void;
 }
 
@@ -137,7 +137,7 @@ export default function ProjectProgress({ projects, expandedId, onSelect, onSect
               if (total === 0) return null;
               const pct = Math.round((done / total) * 100);
               return (
-                <div key={section.id} className="cursor-pointer group/section" onClick={() => onSectionClick?.(section.id)}>
+                <div key={section.id} className="cursor-pointer group/section" onClick={() => onSectionClick?.(section.id, selected.id)}>
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-xs text-slate-300 font-medium truncate max-w-[140px] transition-colors group-hover/section:text-amber-400" title={section.text}>{section.text}</span>
                     <span className="text-xs text-slate-500 shrink-0 ml-1">{pct}%</span>

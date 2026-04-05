@@ -19,17 +19,17 @@ const FEATURES = [
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-slate-950 text-slate-200 animate-fadeIn">
       {/* Nav */}
-      <header className="border-b border-slate-800 px-6 py-4 flex items-center justify-between max-w-5xl mx-auto">
-        <span className="text-xl font-bold text-amber-400">Streakboard</span>
-        <div className="flex items-center gap-4">
-          <Link href="/login" className="text-sm text-slate-400 hover:text-slate-200 transition-colors">
+      <header className="border-b border-slate-800/60 px-6 py-4 flex items-center justify-between max-w-5xl mx-auto sticky top-0 z-40 bg-slate-950/80 backdrop-blur-md transition-all duration-200">
+        <span className="text-xl font-black text-amber-500 tracking-tighter hover:scale-105 transition-transform cursor-default">Streakboard</span>
+        <div className="flex items-center gap-6">
+          <Link href="/login" className="text-sm font-bold text-slate-400 hover:text-white transition-colors relative after:absolute after:bottom-[-4px] after:left-0 after:h-px after:w-0 hover:after:w-full after:bg-amber-400 after:transition-all after:duration-200 uppercase tracking-widest">
             Sign in
           </Link>
           <Link
             href="/signup"
-            className="px-4 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold rounded-lg text-sm transition-colors"
+            className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-sm transition-all hover:scale-105 active:scale-95 shadow-lg shadow-amber-500/10"
           >
             Get started free
           </Link>

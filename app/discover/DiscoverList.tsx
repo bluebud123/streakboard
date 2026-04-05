@@ -16,6 +16,9 @@ interface CardData {
   participantCount: number;
   isParticipating: boolean;
   isOwner: boolean;
+  likeCount: number;
+  dislikeCount: number;
+  myVote: string | null;
 }
 
 interface Props {

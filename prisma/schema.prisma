@@ -27,6 +27,7 @@ model User {
   requests            ProjectRequest[]       @relation("Requester")
   createdItems        ChecklistItem[]        @relation("ItemCreator")
   personalOrders      ChecklistPersonalOrder[]
+  likes               ChecklistLike[]
 }
 
 model CheckIn {
@@ -63,6 +64,7 @@ model Checklist {
   participants ChecklistParticipant[]
   requests     ProjectRequest[]
   checkIns     CheckIn[]
+  likes        ChecklistLike[]
 }
 
 model ChecklistItem {
@@ -152,4 +154,17 @@ model ChecklistRevision {
 model SiteSetting {
   key   String @id
   value String
+}
+
+model ChecklistLike {
+  id          String    @id @default(cuid())
+  checklistId String
+  checklist   Checklist @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        String    // "LIKE" | "DISLIKE"
+  createdAt   DateTime  @default(now())
+
+  @@unique([checklistId, userId])
+  @@index([checklistId])
 }

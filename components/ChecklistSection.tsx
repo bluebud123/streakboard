@@ -605,6 +605,97 @@ function ItemNode({
   );
 }
 
+// ─── Template Panel ───────────────────────────────────────────────────────────
+
+interface TemplatePanelProps {
+  templates: TemplateMetadata[];
+  templateError: string;
+  previewId: string | null;
+  usingTemplate: string | null;
+  onClose: () => void;
+  onPreview: (id: string | null) => void;
+  onUse: (tmpl: TemplateMetadata) => void;
+}
+
+function TemplatePanel({ templates, templateError, previewId, usingTemplate, onClose, onPreview, onUse }: TemplatePanelProps) {
+  const [tab, setTab] = useState<"presets" | "community">("presets");
+
+  return (
+    <div className="mb-4 bg-slate-800/80 border border-slate-700 rounded-2xl overflow-hidden animate-fadeIn">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-700 bg-slate-800">
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setTab("presets")}
+            className={`text-xs font-bold px-3 py-1 rounded-lg transition-all ${tab === "presets" ? "bg-amber-500 text-slate-950" : "text-slate-400 hover:text-white"}`}
+          >
+            📋 Presets
+          </button>
+          <button
+            onClick={() => setTab("community")}
+            className={`text-xs font-bold px-3 py-1 rounded-lg transition-all ${tab === "community" ? "bg-amber-500 text-slate-950" : "text-slate-400 hover:text-white"}`}
+          >
+            🌐 Community
+          </button>
+        </div>
+        <button onClick={onClose} className="text-slate-500 hover:text-white transition-colors text-lg leading-none rotate-45">+</button>
+      </div>
+
+      {/* Preset templates */}
+      {tab === "presets" && (
+        <div className="p-4 space-y-3 max-h-[500px] overflow-y-auto">
+          <p className="text-xs text-slate-500">Pick a starter template — creates an instant copy in your account.</p>
+          {templateError && <p className="text-red-400 text-xs">{templateError}</p>}
+          {templates.length === 0 && <p className="text-slate-500 text-xs py-2">Loading templates…</p>}
+          {templates.map((tmpl) => (
+            <div key={tmpl.id} className="bg-slate-700/60 border border-slate-600/40 rounded-xl p-3">
+              <div className="flex items-start gap-2">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-medium text-slate-200">{tmpl.title}</span>
+                    <span className={`text-xs px-1.5 py-0.5 rounded ${CATEGORY_COLOR[tmpl.category] ?? "bg-slate-700 text-slate-400"}`}>{tmpl.category}</span>
+                    {tmpl.contributor && <span className="text-xs text-slate-500">by @{tmpl.contributor}</span>}
+                  </div>
+                  <p className="text-xs text-slate-400 mt-1 line-clamp-2">{tmpl.description}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">{tmpl.itemCount} items</p>
+                </div>
+              </div>
+              <button onClick={() => onPreview(previewId === tmpl.id ? null : tmpl.id)} className="text-xs text-slate-500 hover:text-slate-300 mt-2 transition-colors">
+                {previewId === tmpl.id ? "Hide preview ▲" : "Preview ▾"}
+              </button>
+              {previewId === tmpl.id && <TemplatePreview filename={tmpl.filename} />}
+              <div className="flex gap-2 mt-2">
+                <button onClick={() => onUse(tmpl)} disabled={usingTemplate === tmpl.id}
+                  className="px-4 py-1.5 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 text-xs font-semibold rounded-lg transition-colors">
+                  {usingTemplate === tmpl.id ? "Importing…" : "Use this →"}
+                </button>
+                <a href={`/templates/${tmpl.filename}`} download className="px-4 py-1.5 bg-slate-600 hover:bg-slate-500 text-slate-300 text-xs font-semibold rounded-lg transition-colors">⬇ .md</a>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Community projects tab */}
+      {tab === "community" && (
+        <div className="p-4 space-y-3">
+          <p className="text-xs text-slate-500">Browse community projects on the Explore page — copy templates or join collab projects.</p>
+          <a
+            href="/discover"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-between w-full px-4 py-3 bg-amber-500/10 border border-amber-500/20 text-amber-400 font-semibold text-sm rounded-xl hover:bg-amber-500/20 transition-all"
+          >
+            <span>🌐 Open Explore page</span>
+            <span className="text-xs opacity-70">↗ opens in new tab</span>
+          </a>
+          <p className="text-xs text-slate-600 italic">After copying a project from Explore, it will appear here automatically.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 interface Props {
@@ -861,6 +952,28 @@ export default function ChecklistSection({
       setOwned((prev) => { const next = prev.filter((cl) => cl.id !== checklistId); onOwnedChange?.(next); return next; });
     } else {
       toast.error("Failed to delete project — please try again.");
+    }
+  }
+
+  // ── Reset my progress ────────────────────────────────────────────────────
+  async function resetProgress(checklistId: string, name: string) {
+    if (!confirm(`Reset ALL your progress on "${name}"?\n\nThis will uncheck every item for your account. This cannot be undone.`)) return;
+    const res = await fetch(`/api/checklists/${checklistId}/progress`, { method: "DELETE" });
+    if (res.ok) {
+      // Optimistically clear progress in local state
+      function clearProgress(items: TreeItem[]): TreeItem[] {
+        return items.map((it) => ({
+          ...it,
+          progress: it.isSection ? it.progress : [{ done: false }],
+          children: it.children ? clearProgress(it.children) : [],
+        }));
+      }
+      setOwned((prev) => prev.map((cl) =>
+        cl.id === checklistId ? { ...cl, items: clearProgress(cl.items) } : cl
+      ));
+      toast.success("Progress reset");
+    } else {
+      toast.error("Failed to reset progress");
     }
   }
 
@@ -1177,51 +1290,43 @@ export default function ChecklistSection({
 
       {/* Blank project form */}
       {newMode === "blank" && (
-        <form onSubmit={createBlank} className="mb-4 bg-slate-800 rounded-xl p-4 space-y-2">
-          <input autoFocus required value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Project name"
-            className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 placeholder-slate-400 text-sm focus:outline-none focus:border-amber-500" />
-          <input value={newDesc} onChange={(e) => setNewDesc(e.target.value)} placeholder="Description (optional)"
-            className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 placeholder-slate-400 text-sm focus:outline-none focus:border-amber-500" />
-          <button type="submit" className="w-full py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold rounded-lg text-sm transition-colors">Create project</button>
-        </form>
+        <div className="mb-4 bg-slate-800/80 border border-slate-700 rounded-2xl overflow-hidden animate-fadeIn">
+          <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-700 bg-slate-800">
+            <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">✦ New Project</span>
+            <button onClick={() => openNew("blank")} className="text-slate-500 hover:text-white transition-colors text-lg leading-none rotate-45">+</button>
+          </div>
+          <form onSubmit={createBlank} className="p-4 space-y-2">
+            <input autoFocus required value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Project name"
+              className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 placeholder-slate-400 text-sm focus:outline-none focus:border-amber-500" />
+            <input value={newDesc} onChange={(e) => setNewDesc(e.target.value)} placeholder="Description (optional)"
+              className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 placeholder-slate-400 text-sm focus:outline-none focus:border-amber-500" />
+            <button type="submit" className="w-full py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold rounded-lg text-sm transition-colors">Create project</button>
+          </form>
+        </div>
       )}
 
       {/* Upload */}
-      {newMode === "upload" && <div className="mb-4"><ChecklistImport onImported={handleImported} /></div>}
+      {newMode === "upload" && (
+        <div className="mb-4 bg-slate-800/80 border border-slate-700 rounded-2xl overflow-hidden animate-fadeIn">
+          <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-700 bg-slate-800">
+            <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">↑ Upload .md</span>
+            <button onClick={() => openNew("upload")} className="text-slate-500 hover:text-white transition-colors text-lg leading-none rotate-45">+</button>
+          </div>
+          <div className="p-4"><ChecklistImport onImported={handleImported} /></div>
+        </div>
+      )}
 
       {/* Template gallery */}
       {newMode === "template" && (
-        <div className="mb-4 space-y-3">
-          <p className="text-xs text-slate-500">Pick a starter template — creates an instant copy in your account.</p>
-          {templateError && <p className="text-red-400 text-xs">{templateError}</p>}
-          {templates.length === 0 && <p className="text-slate-500 text-xs py-2">Loading templates…</p>}
-          {templates.map((tmpl) => (
-            <div key={tmpl.id} className="bg-slate-800 rounded-xl p-4">
-              <div className="flex items-start gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-medium text-slate-200">{tmpl.title}</span>
-                    <span className={`text-xs px-1.5 py-0.5 rounded ${CATEGORY_COLOR[tmpl.category] ?? "bg-slate-700 text-slate-400"}`}>{tmpl.category}</span>
-                    {tmpl.contributor && <span className="text-xs text-slate-500">by @{tmpl.contributor}</span>}
-                  </div>
-                  <p className="text-xs text-slate-400 mt-1 line-clamp-2">{tmpl.description}</p>
-                  <p className="text-xs text-slate-500 mt-1">{tmpl.itemCount} items</p>
-                </div>
-              </div>
-              <button onClick={() => setPreviewId(previewId === tmpl.id ? null : tmpl.id)} className="text-xs text-slate-500 hover:text-slate-300 mt-2 transition-colors">
-                {previewId === tmpl.id ? "Hide preview ▲" : "Preview ▾"}
-              </button>
-              {previewId === tmpl.id && <TemplatePreview filename={tmpl.filename} />}
-              <div className="flex gap-2 mt-3">
-                <button onClick={() => useTemplate(tmpl)} disabled={usingTemplate === tmpl.id}
-                  className="px-4 py-1.5 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 text-xs font-semibold rounded-lg transition-colors">
-                  {usingTemplate === tmpl.id ? "Importing…" : "Use this →"}
-                </button>
-                <a href={`/templates/${tmpl.filename}`} download className="px-4 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs font-semibold rounded-lg transition-colors">⬇ Download .md</a>
-              </div>
-            </div>
-          ))}
-        </div>
+        <TemplatePanel
+          templates={templates}
+          templateError={templateError}
+          previewId={previewId}
+          usingTemplate={usingTemplate}
+          onClose={() => openNew("template")}
+          onPreview={(id) => setPreviewId(id)}
+          onUse={useTemplate}
+        />
       )}
 
       {/* Empty state */}
@@ -1354,9 +1459,9 @@ export default function ChecklistSection({
                   )}
                 </div>
 
-                {/* Row 3: edit toggle + archive + delete */}
+                {/* Row 3: edit toggle + archive + delete + reset */}
                 {cl.isOwner && (
-                  <div className="flex items-center gap-2 mt-1.5 ml-6">
+                  <div className="flex items-center gap-2 mt-1.5 ml-6 flex-wrap">
                     <button
                       onClick={() => toggleEditMode(cl.id)}
                       className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border transition-all ${
@@ -1368,6 +1473,11 @@ export default function ChecklistSection({
                       {isEditMode ? "✓ Done editing" : "✎ Edit"}
                     </button>
                     <button
+                      onClick={() => resetProgress(cl.id, cl.name)}
+                      className="text-[10px] text-slate-600 hover:text-sky-400 transition-colors px-1"
+                      title="Reset all my progress on this project"
+                    >↺ Reset</button>
+                    <button
                       onClick={() => archiveProject(cl.id, cl.name)}
                       className="text-[10px] text-slate-600 hover:text-amber-400 transition-colors px-1"
                       title="Archive project"
@@ -1377,6 +1487,16 @@ export default function ChecklistSection({
                       className="text-[10px] text-slate-600 hover:text-red-400 transition-colors px-1"
                       title="Delete project"
                     >✕ Delete</button>
+                  </div>
+                )}
+                {/* Reset for participating (non-owner) projects */}
+                {!cl.isOwner && isEditMode && (
+                  <div className="flex items-center gap-2 mt-1.5 ml-6">
+                    <button
+                      onClick={() => resetProgress(cl.id, cl.name)}
+                      className="text-[10px] text-slate-600 hover:text-sky-400 transition-colors px-1"
+                      title="Reset all my progress on this project"
+                    >↺ Reset my progress</button>
                   </div>
                 )}
               </div>
