@@ -15,6 +15,7 @@ interface CheckIn {
   minutes: number;
   note: string | null;
   studyTime: string | null;
+  type?: string | null;   // "TIME" | "NOTE"
   createdAt: string;
   checklistId?: string | null;
   checklistName?: string | null;
@@ -111,19 +112,38 @@ function LogEntry({ log, onEdit, onDelete }: {
     );
   }
 
+  const isNote = log.type === "NOTE" || (log.minutes === 0 && !!(log.note));
+
   return (
-    <div className="flex items-start justify-between bg-slate-800/60 rounded-xl px-3 py-2.5 group">
-      <div className="min-w-0">
-        <p className="text-sm text-slate-200 font-medium">
-          {log.minutes > 0 ? `${log.minutes} min` : "—"}
-          <span className="text-xs text-slate-500 font-normal ml-2">{formatLogTime(log.createdAt)}</span>
-          {log.checklistName && (
-            <span className="ml-2 text-[10px] bg-slate-700 text-slate-400 px-1.5 py-0.5 rounded-full">
-              📁 {log.checklistName}
-            </span>
-          )}
-        </p>
-        {log.note && <p className="text-xs text-slate-400 italic mt-0.5">"{log.note}"</p>}
+    <div className={`flex items-start justify-between rounded-xl px-3 py-2.5 group border ${isNote ? "bg-indigo-950/30 border-indigo-800/30" : "bg-slate-800/60 border-transparent"}`}>
+      <div className="min-w-0 flex-1">
+        {isNote ? (
+          /* Note entry */
+          <div className="flex items-start gap-2">
+            <span className="text-indigo-400 text-xs mt-0.5 shrink-0">📝</span>
+            <div className="min-w-0">
+              {log.note && <p className="text-sm text-slate-200 break-words">{log.note}</p>}
+              <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                <span className="text-[10px] text-slate-600">{formatLogTime(log.createdAt)}</span>
+                {log.checklistName && (
+                  <span className="text-[10px] bg-slate-700/60 text-slate-400 px-1.5 py-0.5 rounded-full">📁 {log.checklistName}</span>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* Time entry */
+          <p className="text-sm text-slate-200 font-medium">
+            {log.minutes > 0 ? `${log.minutes} min` : "—"}
+            <span className="text-xs text-slate-500 font-normal ml-2">{formatLogTime(log.createdAt)}</span>
+            {log.checklistName && (
+              <span className="ml-2 text-[10px] bg-slate-700 text-slate-400 px-1.5 py-0.5 rounded-full">
+                📁 {log.checklistName}
+              </span>
+            )}
+          </p>
+        )}
+        {!isNote && log.note && <p className="text-xs text-slate-400 italic mt-0.5">"{log.note}"</p>}
       </div>
       <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-2">
         <button onClick={() => setEditing(true)} className="text-slate-500 hover:text-slate-300 text-xs">✎</button>
@@ -378,6 +398,7 @@ export default function DashboardClient({
   async function handleAddLog() {
     if (timerRunning) stopTimer();
     setLogLoading(true);
+    const noteOnly = newNote.trim() !== "" && !newMinutes && timerElapsed === 0;
     const res = await fetch("/api/checkin", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -385,6 +406,7 @@ export default function DashboardClient({
         minutes: newMinutes ? parseInt(newMinutes) : 0,
         note: newNote,
         checklistId: selectedProjectId || null,
+        type: noteOnly ? "NOTE" : "TIME",
       }),
     });
     if (res.ok) {
@@ -466,6 +488,9 @@ export default function DashboardClient({
 
   const allSessionProjects = [...ownedState, ...participatingState];
 
+  // Detect note-only mode: note filled but no minutes entered and timer not running/elapsed
+  const isNoteOnlyMode = newNote.trim() !== "" && !newMinutes && timerElapsed === 0 && !timerRunning;
+
   // Compact sessions-today form (two-column: notes | timer, then project+min+log)
   const logSection = (
     <section className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
@@ -475,8 +500,8 @@ export default function DashboardClient({
         {/* Row 1: notes textarea | timer */}
         <div className="grid grid-cols-[1fr_auto] gap-3">
           <textarea value={newNote} onChange={(e) => setNewNote(e.target.value)} rows={2}
-            placeholder="What did you study? (optional)"
-            className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:border-amber-500 resize-none" />
+            placeholder={isNoteOnlyMode ? "Note to review later…" : "What did you study? (optional)"}
+            className={`w-full bg-slate-700 border rounded-lg px-3 py-2 text-slate-100 placeholder-slate-500 text-sm focus:outline-none resize-none transition-colors ${isNoteOnlyMode ? "border-indigo-500/50 focus:border-indigo-400" : "border-slate-600 focus:border-amber-500"}`} />
           <div className="flex flex-col items-center justify-center gap-1 min-w-[72px]">
             {timerRunning ? (
               <button onClick={stopTimer} className="w-full px-2 py-1.5 bg-red-500/20 border border-red-500/40 text-red-400 text-xs font-semibold rounded-lg hover:bg-red-500/30 transition-colors">
@@ -498,7 +523,7 @@ export default function DashboardClient({
           </div>
         </div>
 
-        {/* Row 2: project picker + minutes + log button */}
+        {/* Row 2: project picker + (minutes — hidden in note mode) + log button */}
         <div className="flex items-center gap-2">
           <select
             value={selectedProjectId || ""}
@@ -510,14 +535,19 @@ export default function DashboardClient({
               <option key={cl.id} value={cl.id}>{cl.name}</option>
             ))}
           </select>
-          <input type="number" min={0} max={600} value={newMinutes} onChange={(e) => setNewMinutes(e.target.value)}
-            placeholder="min"
-            className="w-16 bg-slate-700 border border-slate-600 rounded-lg px-2 py-1.5 text-slate-100 text-sm focus:outline-none focus:border-amber-500 placeholder-slate-600" />
-          <button onClick={handleAddLog} disabled={logLoading}
-            className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-bold rounded-lg text-sm shrink-0">
-            {logLoading ? "…" : "Log"}
+          {!isNoteOnlyMode && (
+            <input type="number" min={0} max={600} value={newMinutes} onChange={(e) => setNewMinutes(e.target.value)}
+              placeholder="min"
+              className="w-16 bg-slate-700 border border-slate-600 rounded-lg px-2 py-1.5 text-slate-100 text-sm focus:outline-none focus:border-amber-500 placeholder-slate-600" />
+          )}
+          <button onClick={handleAddLog} disabled={logLoading || (!newNote.trim() && !newMinutes && timerElapsed === 0)}
+            className={`px-3 py-1.5 disabled:opacity-40 font-bold rounded-lg text-sm shrink-0 transition-colors ${isNoteOnlyMode ? "bg-indigo-500 hover:bg-indigo-400 text-white" : "bg-amber-500 hover:bg-amber-400 text-slate-950"}`}>
+            {logLoading ? "…" : isNoteOnlyMode ? "📝 Note" : "⏱ Log"}
           </button>
         </div>
+        {isNoteOnlyMode && (
+          <p className="text-[10px] text-indigo-400/60 text-center">No time entered — will save as a review note</p>
+        )}
       </div>
 
       {todayLogs.length === 0 ? (

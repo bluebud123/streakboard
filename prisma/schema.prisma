@@ -39,6 +39,7 @@ model CheckIn {
   minutes     Int        @default(0)
   note        String?
   studyTime   String?
+  type        String     @default("TIME")   // "TIME" | "NOTE"
   createdAt   DateTime   @default(now())
 
   @@index([userId, date])

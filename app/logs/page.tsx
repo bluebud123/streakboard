@@ -20,6 +20,7 @@ export default async function LogsPage() {
     minutes: l.minutes,
     note: l.note,
     studyTime: (l as { studyTime?: string | null }).studyTime ?? null,
+    type: (l as any).type ?? "TIME",
     createdAt: l.createdAt.toISOString(),
     checklistId: l.checklistId ?? null,
     checklistName: (l as any).checklist?.name ?? null,

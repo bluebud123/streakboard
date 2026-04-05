@@ -3,36 +3,45 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { localDateKey } from "@/lib/streak";
 
+function serializeCheckIn(c: any) {
+  return {
+    id: c.id,
+    date: c.date,
+    minutes: c.minutes,
+    note: c.note,
+    studyTime: c.studyTime,
+    type: c.type ?? "TIME",
+    createdAt: c.createdAt instanceof Date ? c.createdAt.toISOString() : c.createdAt,
+    checklistId: c.checklistId ?? null,
+    checklistName: c.checklist?.name ?? null,
+  };
+}
+
 // POST — create a new log entry (multiple per day allowed)
 export async function POST(req: Request) {
   const session = await auth();
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { minutes, note, studyTime, date: reqDate, checklistId } = await req.json();
+  const { minutes, note, studyTime, date: reqDate, checklistId, type } = await req.json();
   const date = reqDate ?? localDateKey(new Date());
+
+  // Auto-detect type: if no minutes and note exists → NOTE, otherwise TIME
+  const resolvedType = type ?? (((!minutes || minutes === 0) && note?.trim()) ? "NOTE" : "TIME");
 
   const checkIn = await prisma.checkIn.create({
     data: {
       userId: session.user.id,
       date,
-      minutes: minutes ?? 0,
+      minutes: resolvedType === "NOTE" ? 0 : (minutes ?? 0),
       note: note?.trim() || null,
       studyTime: studyTime?.trim() || null,
       checklistId: checklistId || null,
+      type: resolvedType,
     },
     include: { checklist: { select: { name: true } } },
   });
 
-  return NextResponse.json({
-    id: checkIn.id,
-    date: checkIn.date,
-    minutes: checkIn.minutes,
-    note: checkIn.note,
-    studyTime: checkIn.studyTime,
-    createdAt: checkIn.createdAt.toISOString(),
-    checklistId: checkIn.checklistId,
-    checklistName: checkIn.checklist?.name ?? null,
-  });
+  return NextResponse.json(serializeCheckIn(checkIn));
 }
 
 // PATCH — update a specific log entry by id
@@ -40,7 +49,7 @@ export async function PATCH(req: Request) {
   const session = await auth();
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { id, minutes, note, studyTime } = await req.json();
+  const { id, minutes, note, studyTime, type } = await req.json();
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
 
   const log = await prisma.checkIn.findUnique({ where: { id } });
@@ -50,23 +59,15 @@ export async function PATCH(req: Request) {
   const updated = await prisma.checkIn.update({
     where: { id },
     data: {
-      minutes: minutes ?? log.minutes,
+      minutes: minutes !== undefined ? (minutes ?? 0) : log.minutes,
       note: note !== undefined ? (note?.trim() || null) : log.note,
       studyTime: studyTime !== undefined ? (studyTime?.trim() || null) : log.studyTime,
+      type: type !== undefined ? type : log.type,
     },
     include: { checklist: { select: { name: true } } },
   });
 
-  return NextResponse.json({
-    id: updated.id,
-    date: updated.date,
-    minutes: updated.minutes,
-    note: updated.note,
-    studyTime: updated.studyTime,
-    createdAt: updated.createdAt.toISOString(),
-    checklistId: updated.checklistId,
-    checklistName: updated.checklist?.name ?? null,
-  });
+  return NextResponse.json(serializeCheckIn(updated));
 }
 
 // DELETE — delete a specific log entry by ?id=
@@ -103,16 +104,5 @@ export async function GET(req: Request) {
     include: { checklist: { select: { name: true } } },
   });
 
-  return NextResponse.json(
-    checkIns.map((c) => ({
-      id: c.id,
-      date: c.date,
-      minutes: c.minutes,
-      note: c.note,
-      studyTime: c.studyTime,
-      createdAt: c.createdAt.toISOString(),
-      checklistId: c.checklistId,
-      checklistName: c.checklist?.name ?? null,
-    }))
-  );
+  return NextResponse.json(checkIns.map(serializeCheckIn));
 }
