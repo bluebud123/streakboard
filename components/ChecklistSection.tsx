@@ -680,15 +680,13 @@ function TemplatePanel({ templates, templateError, previewId, usingTemplate, onC
       {tab === "community" && (
         <div className="p-4 space-y-3">
           <p className="text-xs text-slate-500">Browse community projects on the Explore page — copy templates or join collab projects.</p>
-          <a
+          <Link
             href="/discover"
-            target="_blank"
-            rel="noopener noreferrer"
             className="flex items-center justify-between w-full px-4 py-3 bg-amber-500/10 border border-amber-500/20 text-amber-400 font-semibold text-sm rounded-xl hover:bg-amber-500/20 transition-all"
           >
             <span>🌐 Open Explore page</span>
-            <span className="text-xs opacity-70">↗ opens in new tab</span>
-          </a>
+            <span className="text-xs opacity-70">→</span>
+          </Link>
           <p className="text-xs text-slate-600 italic">After copying a project from Explore, it will appear here automatically.</p>
         </div>
       )}
@@ -1455,7 +1453,7 @@ export default function ChecklistSection({
                     <span className="text-[10px] text-slate-500">by @{cl.user.username}</span>
                   )}
                   {cl.slug && cl.visibility !== "PRIVATE" && cl.visibility !== "PRIVATE_COLLAB" && (
-                    <Link href={`/project/${cl.slug}`} target="_blank" className="text-[10px] text-amber-500 hover:text-amber-400 transition-colors">↗ view</Link>
+                    <Link href={`/project/${cl.slug}`} className="text-[10px] text-amber-500 hover:text-amber-400 transition-colors">↗ view</Link>
                   )}
                 </div>
 

@@ -316,7 +316,7 @@ export default function DashboardClient({
     return `${m}:${String(s).padStart(2, "0")}`;
   }
 
-  const [mobileTab, setMobileTab] = useState<"projects" | "log" | "calendar">("projects");
+  const [mobileTab, setMobileTab] = useState<"home" | "projects" | "progress" | "calendar">("home");
   const [copied, setCopied] = useState(false);
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
 
@@ -462,21 +462,28 @@ export default function DashboardClient({
   }
 
   function handleSectionClick(sectionId: string, projectId?: string) {
-    // If project isn't expanded yet, expand it first then scroll
+    // If project isn't expanded yet, expand it first
     if (projectId && expandedProjectId !== projectId) {
       setExpandedProjectId(projectId);
     }
-    // Scroll after a short delay to let React render the expanded content
+    // On mobile, switch to projects tab so the item is visible
+    setMobileTab("projects");
+    // Wait for React to render, then find the VISIBLE element (both mobile+desktop are in DOM)
     setTimeout(() => {
-      const el = document.querySelector(`[data-item-id="${sectionId}"]`);
+      const all = document.querySelectorAll(`[data-item-id="${sectionId}"]`);
+      const el = Array.from(all).find((e) => (e as HTMLElement).offsetParent !== null) as HTMLElement | undefined;
       if (el) {
-        el.scrollIntoView({ behavior: "smooth", block: "center" });
-        el.classList.add("ring-2", "ring-amber-500", "ring-offset-2", "ring-offset-slate-900", "rounded");
+        const top = el.getBoundingClientRect().top + window.scrollY - 90;
+        window.scrollTo({ top, behavior: "smooth" });
+        el.style.transition = "box-shadow 0.2s";
+        el.style.boxShadow = "0 0 0 2px #f59e0b, 0 0 0 4px rgba(245,158,11,0.2)";
+        el.style.borderRadius = "8px";
         setTimeout(() => {
-          el.classList.remove("ring-2", "ring-amber-500", "ring-offset-2", "ring-offset-slate-900", "rounded");
+          el.style.boxShadow = "";
+          el.style.borderRadius = "";
         }, 2000);
       }
-    }, 200);
+    }, 350);
   }
 
   // Deadline stat card — show selected project deadline, or most urgent upcoming deadline, or days logged
@@ -619,7 +626,7 @@ export default function DashboardClient({
           {copied ? "✓" : "Copy"}
         </button>
       </div>
-      <Link href={shareHref} target="_blank" className="block mt-2 text-xs text-amber-400/70 hover:text-amber-400 text-center">
+      <Link href={shareHref} className="block mt-2 text-xs text-amber-400/70 hover:text-amber-400 text-center">
         {isProjectShareable ? "View project →" : "View profile →"}
       </Link>
     </div>
@@ -627,30 +634,76 @@ export default function DashboardClient({
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 animate-fadeIn">
-      <header className="border-b border-slate-800/60 px-6 py-4 flex items-center justify-between sticky top-0 z-40 bg-slate-950/80 backdrop-blur-md transition-all duration-200">
+      {/* ── Desktop header ─────────────────────────────────────────────────── */}
+      <header className="border-b border-slate-800/60 px-6 py-4 hidden lg:flex items-center justify-between sticky top-0 z-40 bg-slate-950/80 backdrop-blur-md transition-all duration-200">
         <Link href="/dashboard" className="text-xl font-bold text-amber-500 hover:text-amber-400 transition-colors tracking-tight">Streakboard</Link>
         <div className="flex items-center gap-5">
           {user.isAdmin && <Link href="/admin" className="text-sm text-amber-500 hover:text-amber-400 font-medium transition-colors">Admin</Link>}
           <Link href="/discover" className="text-sm text-slate-400 hover:text-white transition-colors">Explore</Link>
           <Link href="/logs" className="text-sm text-slate-400 hover:text-white transition-colors">Log</Link>
-          <Link href={`/u/${username}`} target="_blank" className="text-sm text-slate-400 hover:text-white transition-colors">Profile</Link>
+          <Link href={`/u/${username}`} className="text-sm text-slate-400 hover:text-white transition-colors">Profile</Link>
           <Link href="/settings" className="text-sm text-slate-400 hover:text-white transition-colors">Settings</Link>
           <button onClick={() => signOut({ callbackUrl: "/" })} className="text-sm text-slate-500 hover:text-red-400 transition-colors active:scale-95">Sign out</button>
         </div>
       </header>
 
-      <div className="lg:hidden flex border-b border-slate-800 sticky top-[57px] z-30 bg-slate-950">
-        {(["projects", "log", "calendar"] as const).map((tab) => (
-          <button key={tab} onClick={() => setMobileTab(tab)}
-            className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${mobileTab === tab ? "text-amber-400 border-amber-400" : "text-slate-500 border-transparent"}`}>
-            {tab === "projects" ? "Projects" : tab === "log" ? "Log" : "Calendar"}
-          </button>
-        ))}
-      </div>
+      {/* ── Mobile header ──────────────────────────────────────────────────── */}
+      <header className="lg:hidden sticky top-0 z-40 bg-slate-950/95 backdrop-blur-md border-b border-slate-800/60 px-4 py-3 flex items-center justify-between">
+        <div>
+          <p className="text-xs text-slate-500 font-medium">Hey, {user.name.split(" ")[0]} 👋</p>
+          <div className="flex items-center gap-2 mt-0.5">
+            <span className="text-amber-400 font-black text-lg leading-none">{currentStreak}</span>
+            <span className="text-slate-400 text-xs">🔥 day streak</span>
+            {examDays !== null && (
+              <span className={`text-xs font-semibold ml-1 ${examDays <= 30 ? "text-red-400" : "text-slate-500"}`}>· {examDays}d left</span>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          {user.isAdmin && <Link href="/admin" className="text-xs text-amber-500 font-medium">Admin</Link>}
+          <Link href="/settings" className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-800 text-slate-400 hover:text-white transition-colors text-sm">⚙</Link>
+          <Link href={`/u/${username}`} className="w-8 h-8 flex items-center justify-center rounded-full bg-amber-500/20 border border-amber-500/30 text-amber-400 font-black text-sm">
+            {user.name[0].toUpperCase()}
+          </Link>
+        </div>
+      </header>
 
-      <div className="lg:hidden px-4 py-4 space-y-4">
+      {/* ── Mobile content ─────────────────────────────────────────────────── */}
+      <div className="lg:hidden pb-20">
+        {mobileTab === "home" && (
+          <div className="px-4 pt-4 space-y-4">
+            {/* Stats row */}
+            <div className="grid grid-cols-3 gap-2">
+              <StatCard label="Streak" value={`${currentStreak}d`} icon="🔥" highlight />
+              <StatCard label="Longest" value={`${streaks.longestStreak}d`} icon="🏆" />
+              {deadlineStatCard}
+            </div>
+            {/* Log today */}
+            {logSection}
+            {reviewedTodayBlock}
+            {/* Today's logs summary */}
+            {todayLogs.length > 0 && (
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Logged today</h3>
+                  <span className="text-xs text-slate-500">{todayLogs.reduce((s, l) => s + l.minutes, 0)} min</span>
+                </div>
+                <div className="space-y-1.5">
+                  {todayLogs.map((log) => (
+                    <div key={log.id} className="text-xs flex items-start gap-2">
+                      <span className="text-slate-500 shrink-0 w-8">{log.minutes > 0 ? `${log.minutes}m` : "📝"}</span>
+                      {log.checklistName && <span className="text-slate-500 shrink-0">· {log.checklistName}</span>}
+                      {log.note && <span className="italic text-slate-600 truncate">"{log.note}"</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {mobileTab === "projects" && (
-          <>
+          <div className="px-4 pt-4 space-y-4">
             <ChecklistSection
               owned={ownedState}
               participating={participatingState}
@@ -662,39 +715,51 @@ export default function DashboardClient({
               onParticipatingChange={setParticipatingState}
               onCollabProgressChange={setCollabProgress}
             />
+          </div>
+        )}
+
+        {mobileTab === "progress" && (
+          <div className="px-4 pt-4 space-y-4">
             <ProjectProgress projects={allProjects} expandedId={expandedProjectId}
-              onSelect={(id) => setExpandedProjectId(expandedProjectId === id ? null : id)}
+              onSelect={(id) => { setExpandedProjectId(expandedProjectId === id ? null : id); }}
               onSectionClick={handleSectionClick}
               onCountdownClick={(id) => { setExpandedProjectId(id); setMobileTab("projects"); }} />
             {leaderboardBlock}
             {projectRequestsBlock}
             {shareCard}
-          </>
+          </div>
         )}
-        {mobileTab === "log" && (
-          <>
-            <div>
-              <h1 className="text-xl font-bold text-slate-100">Hey, {user.name.split(" ")[0]}</h1>
-              <p className="text-slate-400 text-sm mt-0.5">Studying for <span className="text-amber-400">{user.studyingFor}</span>
-                {examDays !== null && <> · <span className={examDays <= 30 ? "text-red-400" : "text-emerald-400"}>{examDays}d left</span></>}
-              </p>
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              <StatCard label="Streak" value={`${currentStreak}d`} icon="🔥" highlight />
-              <StatCard label="Longest" value={`${streaks.longestStreak}d`} icon="🏆" />
-              {deadlineStatCard}
-            </div>
-            {logSection}
-            {reviewedTodayBlock}
-          </>
-        )}
+
         {mobileTab === "calendar" && (
-          <>
+          <div className="px-4 pt-4 space-y-4">
             {streakBadge}
             <MiniCalendar checkIns={allCheckIns} reviewsByDate={reviewsByDate} defaultDate={todayKey} />
-          </>
+          </div>
         )}
       </div>
+
+      {/* ── Mobile bottom nav ──────────────────────────────────────────────── */}
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-slate-950/95 backdrop-blur-md border-t border-slate-800/80 flex items-center">
+        {([
+          { key: "home",     icon: "🏠", label: "Home" },
+          { key: "projects", icon: "📋", label: "Projects" },
+          { key: "progress", icon: "📊", label: "Progress" },
+          { key: "calendar", icon: "📅", label: "Calendar" },
+        ] as const).map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setMobileTab(t.key as typeof mobileTab)}
+            className={`flex-1 flex flex-col items-center gap-1 py-2.5 transition-colors ${mobileTab === t.key ? "text-amber-400" : "text-slate-500 active:text-slate-300"}`}
+          >
+            <span className="text-xl leading-none">{t.icon}</span>
+            <span className={`text-[10px] font-semibold tracking-wide ${mobileTab === t.key ? "text-amber-400" : "text-slate-500"}`}>{t.label}</span>
+          </button>
+        ))}
+        <Link href="/logs" className="flex-1 flex flex-col items-center gap-1 py-2.5 text-slate-500 active:text-slate-300 transition-colors">
+          <span className="text-xl leading-none">📓</span>
+          <span className="text-[10px] font-semibold tracking-wide">Logs</span>
+        </Link>
+      </nav>
 
       <div className="hidden lg:grid max-w-[1400px] mx-auto px-4 py-6 grid-cols-[280px_1fr_280px] gap-6 items-start min-h-[calc(100vh-73px)]">
         <aside className="space-y-4 sticky top-[73px] max-h-[calc(100vh-90px)] overflow-y-auto pb-4 pr-1 scrollbar-hide">
