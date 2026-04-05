@@ -702,6 +702,7 @@ interface Props {
   archived?: ChecklistData[];
   userId: string;
   forcedExpandId?: string | null;
+  scrollTarget?: string | null;  // format: "sectionId:timestamp"
   onExpandChange?: (id: string | null) => void;
   onOwnedChange?: (list: ChecklistData[]) => void;
   onParticipatingChange?: (list: ChecklistData[]) => void;
@@ -710,8 +711,9 @@ interface Props {
 
 export default function ChecklistSection({
   owned: initialOwned, participating: initialParticipating, archived = [], userId,
-  forcedExpandId, onExpandChange, onOwnedChange, onParticipatingChange, onCollabProgressChange
+  forcedExpandId, scrollTarget, onExpandChange, onOwnedChange, onParticipatingChange, onCollabProgressChange
 }: Props) {
+  const containerRef = useRef<HTMLElement>(null);
   const [owned, setOwned] = useState(initialOwned);
   const [participating] = useState(initialParticipating);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -760,19 +762,47 @@ export default function ChecklistSection({
   const addPopupRef = useRef<HTMLDivElement>(null);
 
   // Sync forced expand from parent (right panel project click)
-  const expandRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (forcedExpandId && forcedExpandId !== expanded) {
       setExpanded(forcedExpandId);
       onExpandChange?.(forcedExpandId);
       // Scroll to the project card
       setTimeout(() => {
-        const el = document.querySelector(`[data-checklist-id="${forcedExpandId}"]`);
+        const el = containerRef.current?.querySelector(`[data-checklist-id="${forcedExpandId}"]`);
         el?.scrollIntoView({ behavior: "smooth", block: "start" });
       }, 100);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [forcedExpandId]);
+
+  // Scroll to a specific section/item when right panel section is clicked
+  useEffect(() => {
+    if (!scrollTarget) return;
+    const sectionId = scrollTarget.split(":")[0];
+    // Double rAF: first waits for React DOM commit, second waits for layout paint
+    const r1 = requestAnimationFrame(() => {
+      const r2 = requestAnimationFrame(() => {
+        const root = containerRef.current;
+        if (!root) return;
+        const el = root.querySelector(`[data-item-id="${sectionId}"]`) as HTMLElement | null;
+        if (el) {
+          el.style.scrollMarginTop = "90px";
+          el.scrollIntoView({ behavior: "smooth", block: "start" });
+          el.style.outline = "2px solid #f59e0b";
+          el.style.outlineOffset = "3px";
+          el.style.borderRadius = "6px";
+          setTimeout(() => {
+            el.style.outline = "";
+            el.style.outlineOffset = "";
+            el.style.borderRadius = "";
+          }, 2500);
+        }
+      });
+      return () => cancelAnimationFrame(r2);
+    });
+    return () => cancelAnimationFrame(r1);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scrollTarget]);
 
   // Close popup on outside click
   useEffect(() => {
@@ -958,11 +988,12 @@ export default function ChecklistSection({
     if (!confirm(`Reset ALL your progress on "${name}"?\n\nThis will uncheck every item for your account. This cannot be undone.`)) return;
     const res = await fetch(`/api/checklists/${checklistId}/progress`, { method: "DELETE" });
     if (res.ok) {
-      // Optimistically clear progress in local state
+      // Optimistically clear progress AND revisions in local state
       function clearProgress(items: TreeItem[]): TreeItem[] {
         return items.map((it) => ({
           ...it,
           progress: it.isSection ? it.progress : [{ done: false }],
+          revisions: [],
           children: it.children ? clearProgress(it.children) : [],
         }));
       }
@@ -1257,7 +1288,7 @@ export default function ChecklistSection({
   const isEmpty = allProjects.length === 0;
 
   return (
-    <section className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm hover:border-slate-700/50 transition-all duration-300">
+    <section ref={containerRef} className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm hover:border-slate-700/50 transition-all duration-300">
       {/* Section header */}
       <div className="flex items-center justify-between mb-4">
         <h2 className="font-semibold text-slate-200">Projects</h2>

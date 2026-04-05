@@ -317,6 +317,7 @@ export default function DashboardClient({
   }
 
   const [mobileTab, setMobileTab] = useState<"home" | "projects" | "progress" | "calendar">("home");
+  const [scrollTarget, setScrollTarget] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
 
@@ -462,28 +463,14 @@ export default function DashboardClient({
   }
 
   function handleSectionClick(sectionId: string, projectId?: string) {
-    // If project isn't expanded yet, expand it first
+    // Expand the project in the center panel
     if (projectId && expandedProjectId !== projectId) {
       setExpandedProjectId(projectId);
     }
-    // On mobile, switch to projects tab so the item is visible
+    // Switch mobile tab to projects so ChecklistSection is rendered
     setMobileTab("projects");
-    // Wait for React to render, then find the VISIBLE element (both mobile+desktop are in DOM)
-    setTimeout(() => {
-      const all = document.querySelectorAll(`[data-item-id="${sectionId}"]`);
-      const el = Array.from(all).find((e) => (e as HTMLElement).offsetParent !== null) as HTMLElement | undefined;
-      if (el) {
-        const top = el.getBoundingClientRect().top + window.scrollY - 90;
-        window.scrollTo({ top, behavior: "smooth" });
-        el.style.transition = "box-shadow 0.2s";
-        el.style.boxShadow = "0 0 0 2px #f59e0b, 0 0 0 4px rgba(245,158,11,0.2)";
-        el.style.borderRadius = "8px";
-        setTimeout(() => {
-          el.style.boxShadow = "";
-          el.style.borderRadius = "";
-        }, 2000);
-      }
-    }, 350);
+    // Tell ChecklistSection to scroll to this item (uses containerRef internally, no global querySelector)
+    setScrollTarget(`${sectionId}:${Date.now()}`);
   }
 
   // Deadline stat card — show selected project deadline, or most urgent upcoming deadline, or days logged
@@ -710,6 +697,7 @@ export default function DashboardClient({
               archived={archivedChecklists}
               userId={userId}
               forcedExpandId={expandedProjectId}
+              scrollTarget={scrollTarget}
               onExpandChange={(id) => setExpandedProjectId(id)}
               onOwnedChange={setOwnedState}
               onParticipatingChange={setParticipatingState}

@@ -45,7 +45,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   return NextResponse.json({ overall, sections });
 }
 
-// DELETE: reset all my progress on this checklist
+// DELETE: reset all my progress AND review history on this checklist
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
   const session = await auth();
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -58,9 +58,15 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
   });
   const itemIds = items.map((i) => i.id);
 
-  await prisma.checklistProgress.deleteMany({
-    where: { userId, itemId: { in: itemIds } },
-  });
+  // Delete checkboxes (ChecklistProgress) AND review dates (ChecklistRevision)
+  await Promise.all([
+    prisma.checklistProgress.deleteMany({
+      where: { userId, itemId: { in: itemIds } },
+    }),
+    prisma.checklistRevision.deleteMany({
+      where: { userId, itemId: { in: itemIds } },
+    }),
+  ]);
 
   return NextResponse.json({ reset: true });
 }
