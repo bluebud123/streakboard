@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import AppHeader from "@/components/AppHeader";
 
 interface User {
   id: string;
@@ -113,14 +114,8 @@ export default function SettingsClient({ user }: { user: User }) {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
-      <header className="border-b border-slate-900 px-6 py-4 flex items-center justify-between">
-        <Link href="/dashboard" className="text-sm text-slate-400 hover:text-amber-400 transition-colors flex items-center gap-1">
-          ← Dashboard
-        </Link>
-        <h1 className="text-sm font-semibold text-slate-200">User Settings</h1>
-        <div className="w-20" /> {/* Spacer */}
-      </header>
+    <div className="min-h-screen bg-slate-950 text-slate-100 animate-fadeIn">
+      <AppHeader />
 
       <main className="max-w-2xl mx-auto px-4 py-8 space-y-12">
         {/* Profile Section */}
@@ -130,84 +125,85 @@ export default function SettingsClient({ user }: { user: User }) {
             <p className="text-xs text-slate-500 mt-1">Manage your public information and preferences.</p>
           </div>
 
-          <form onSubmit={handleProfileSave} className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
-            <div className="grid sm:grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-slate-400">Display Name</label>
+          <form onSubmit={handleProfileSave} className="bg-slate-900 border border-slate-800 rounded-2xl p-8 space-y-6 hover:border-slate-700 transition-all duration-300 shadow-sm group">
+            <div className="grid sm:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Display Name</label>
                 <input
                   required
                   value={profile.name}
                   onChange={(e) => setProfile({ ...profile, name: e.target.value })}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-500 transition-colors"
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/30 transition-all placeholder-slate-600"
                 />
               </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-slate-400">Username</label>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Username</label>
                 <input
                   required
                   value={profile.username}
                   onChange={(e) => setProfile({ ...profile, username: e.target.value.toLowerCase() })}
                   onBlur={(e) => checkUsername(e.target.value)}
-                  className={`w-full bg-slate-800 border ${usernameError ? "border-red-500" : "border-slate-700"} rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-500 transition-colors`}
+                  className={`w-full bg-slate-800 border rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-amber-500/30 transition-all placeholder-slate-600 ${usernameError ? "border-red-500/50" : "border-slate-700 focus:border-amber-500"}`}
                 />
-                {usernameError && <p className="text-[10px] text-red-400">{usernameError}</p>}
+                {usernameError && <p className="text-[10px] font-bold text-red-400 uppercase tracking-tighter ml-1">{usernameError}</p>}
               </div>
             </div>
 
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-slate-400">Email Address</label>
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Email Address</label>
               <input
                 required
                 type="email"
                 value={profile.email}
                 onChange={(e) => setProfile({ ...profile, email: e.target.value })}
-                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-500 transition-colors"
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/30 transition-all placeholder-slate-600"
               />
             </div>
 
-            <div className="grid sm:grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-slate-400">Studying For</label>
+            <div className="grid sm:grid-cols-2 gap-6 pt-2">
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Studying For</label>
                 <input
                   value={profile.studyingFor}
                   onChange={(e) => setProfile({ ...profile, studyingFor: e.target.value })}
                   placeholder="e.g. USMLE Step 1"
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-500 transition-colors"
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/30 transition-all placeholder-slate-600"
                 />
               </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-slate-400">Exam Date (Optional)</label>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Exam Date (Optional)</label>
                 <input
                   type="date"
                   value={profile.examDate}
                   onChange={(e) => setProfile({ ...profile, examDate: e.target.value })}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-500 transition-colors [color-scheme:dark]"
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/30 transition-all [color-scheme:dark]"
                 />
               </div>
             </div>
 
-            <div className="flex items-center gap-3 py-2">
+            <div className="flex items-center gap-4 py-2">
               <input
                 type="checkbox"
                 id="isPublic"
                 checked={profile.isPublic}
                 onChange={(e) => setProfile({ ...profile, isPublic: e.target.checked })}
-                className="w-4 h-4 rounded accent-amber-500 cursor-pointer"
+                className="w-5 h-5 rounded-lg accent-amber-500 cursor-pointer shadow-sm"
               />
-              <label htmlFor="isPublic" className="text-sm text-slate-300 cursor-pointer">
-                Public profile visible at <span className="text-amber-500/80">/u/{profile.username}</span>
+              <label htmlFor="isPublic" className="text-sm text-slate-300 cursor-pointer select-none">
+                <span className="font-bold text-slate-200 group-hover:text-white transition-colors">Public profile</span> — visible at <span className="text-amber-500/80 font-mono">/u/{profile.username}</span>
+                <span className="block text-[10px] text-slate-500 font-medium mt-0.5">When off: profile is private and your name is hidden in leaderboards</span>
               </label>
             </div>
 
-            <div className="pt-2 flex items-center justify-between">
+            <div className="pt-4 flex items-center justify-between border-t border-slate-800/60">
               <div className="h-4">
-                {profileError && <p className="text-xs text-red-400">{profileError}</p>}
-                {profileSuccess && <p className="text-xs text-emerald-400">✓ Profile updated successfully</p>}
+                {profileError && <p className="text-xs font-bold text-red-400 uppercase tracking-tighter">{profileError}</p>}
+                {profileSuccess && <p className="text-xs font-bold text-emerald-400 uppercase tracking-widest animate-fadeIn">✓ Saved successfully</p>}
               </div>
               <button
                 type="submit"
                 disabled={profileSaving || !!usernameError}
-                className="px-6 py-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-semibold rounded-lg text-sm transition-colors"
+                className="px-8 py-2.5 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-black rounded-xl text-sm transition-all hover:scale-105 active:scale-95 shadow-lg shadow-amber-500/10"
               >
                 {profileSaving ? "Saving..." : "Save Profile"}
               </button>

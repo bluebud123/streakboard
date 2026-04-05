@@ -472,19 +472,27 @@ export default function DashboardClient({
     }
   }
 
-  // Deadline stat card
-  const deadlineStatCard = selectedProject?.deadline ? (() => {
-    const daysLeft = Math.ceil((new Date(selectedProject.deadline).getTime() - Date.now()) / 86400000);
-    return (
-      <StatCard
-        label={daysLeft < 0 ? "overdue" : "project deadline"}
-        value={`${Math.abs(daysLeft)}d`}
-        icon="🔥"
-        highlight={daysLeft <= 7 && daysLeft >= 0}
-        danger={daysLeft < 0}
-      />
-    );
-  })() : <StatCard label="Days logged" value={`${streaks.totalDays}`} icon="📅" />;
+  // Deadline stat card — show selected project deadline, or most urgent upcoming deadline, or days logged
+  const deadlineStatCard = (() => {
+    const sourceProject = selectedProject?.deadline
+      ? selectedProject
+      : allProjects
+          .filter((p) => p.deadline)
+          .sort((a, b) => new Date(a.deadline!).getTime() - new Date(b.deadline!).getTime())[0];
+    if (sourceProject?.deadline) {
+      const daysLeft = Math.ceil((new Date(sourceProject.deadline).getTime() - Date.now()) / 86400000);
+      return (
+        <StatCard
+          label={daysLeft < 0 ? `${sourceProject.name} overdue` : `${sourceProject.name}`}
+          value={`${Math.abs(daysLeft)}d`}
+          icon="🗓"
+          highlight={daysLeft <= 7 && daysLeft >= 0}
+          danger={daysLeft < 0}
+        />
+      );
+    }
+    return <StatCard label="Days logged" value={`${streaks.totalDays}`} icon="📅" />;
+  })();
 
   const allSessionProjects = [...ownedState, ...participatingState];
 
@@ -641,6 +649,7 @@ export default function DashboardClient({
               participating={participatingState}
               archived={archivedChecklists}
               userId={userId}
+              forcedExpandId={expandedProjectId}
               onExpandChange={(id) => setExpandedProjectId(id)}
               onOwnedChange={setOwnedState}
               onParticipatingChange={setParticipatingState}
@@ -723,6 +732,7 @@ export default function DashboardClient({
             participating={participatingState}
             archived={archivedChecklists}
             userId={userId}
+            forcedExpandId={expandedProjectId}
             onExpandChange={(id) => setExpandedProjectId(id)}
             onOwnedChange={setOwnedState}
             onParticipatingChange={setParticipatingState}

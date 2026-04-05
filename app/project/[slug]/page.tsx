@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { auth } from "@/auth";
 import Link from "next/link";
+import AppHeader from "@/components/AppHeader";
 import PublicProjectClient from "./PublicProjectClient";
 
 // Flatten a nested item tree to get all checkable (non-section) items
@@ -142,31 +143,7 @@ export default async function PublicProjectPage({ params }: { params: Promise<{ 
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200">
-      <header className="border-b border-slate-800/60 px-6 py-4 flex items-center justify-between sticky top-0 z-40 bg-slate-950/80 backdrop-blur-md">
-        <Link href={session ? "/dashboard" : "/"} className="text-xl font-bold text-amber-500 hover:text-amber-400 transition-colors tracking-tight">
-          Streakboard
-        </Link>
-        {session ? (
-          <div className="flex items-center gap-5">
-            <Link href="/dashboard" className="text-sm text-slate-400 hover:text-white transition-colors relative after:absolute after:bottom-[-4px] after:left-0 after:h-px after:w-0 hover:after:w-full after:bg-amber-400 after:transition-all after:duration-200">
-              Dashboard
-            </Link>
-            <Link href="/logs" className="text-sm text-slate-400 hover:text-white transition-colors relative after:absolute after:bottom-[-4px] after:left-0 after:h-px after:w-0 hover:after:w-full after:bg-amber-400 after:transition-all after:duration-200">
-              Log
-            </Link>
-            <Link href="/discover" className="text-sm text-slate-400 hover:text-white transition-colors relative after:absolute after:bottom-[-4px] after:left-0 after:h-px after:w-0 hover:after:w-full after:bg-amber-400 after:transition-all after:duration-200">
-              Explore
-            </Link>
-          </div>
-        ) : (
-          <Link
-            href="/signup"
-            className="px-4 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold rounded-lg text-sm transition-all hover:scale-105 active:scale-95 shadow-lg shadow-amber-500/20"
-          >
-            Create yours →
-          </Link>
-        )}
-      </header>
+      <AppHeader />
 
       <main className="max-w-2xl mx-auto px-4 py-8 space-y-6">
         <div>

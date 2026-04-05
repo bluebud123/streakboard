@@ -37,8 +37,13 @@ export default function DiscoverList({ cards, isLoggedIn }: Props) {
     );
   }, [cards, search]);
 
-  const templates = filtered.filter((c) => c.visibility === "PUBLIC_TEMPLATE");
-  const open = filtered.filter((c) => c.visibility === "PUBLIC_COLLAB" || c.visibility === "PUBLIC_EDIT");
+  const community = filtered; // All cards — templates + collab + collab+edit merged
+
+  const visLabel = (v: string) => {
+    if (v === "PUBLIC_TEMPLATE") return { badge: "Template", color: "text-sky-400 bg-sky-500/10" };
+    if (v === "PUBLIC_EDIT") return { badge: "Collab + Edit", color: "text-amber-400 bg-amber-500/10" };
+    return { badge: "Collab", color: "text-emerald-400 bg-emerald-500/10" };
+  };
 
   return (
     <div className="space-y-12">
@@ -64,47 +69,35 @@ export default function DiscoverList({ cards, isLoggedIn }: Props) {
         )}
       </div>
 
-      {/* Community Templates */}
+      {/* Community Projects — all public types in one section */}
       <section className="animate-fadeIn">
-        <h2 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-6 px-1 flex items-center gap-2">
-          📋 Community Templates
-          <span className="text-slate-700 font-mono">/ {templates.length}</span>
-        </h2>
-
-        {templates.length === 0 ? (
-          <div className="bg-slate-900/50 border border-slate-800/60 border-dashed rounded-3xl p-12 text-center">
-            <p className="text-slate-600 text-sm font-medium">{search ? "No templates match your search." : "No public templates yet."}</p>
-          </div>
-        ) : (
-          <div className="grid sm:grid-cols-2 gap-6">
-            {templates.map((c) => (
-              <DiscoverClient key={c.id} card={c} isLoggedIn={isLoggedIn} />
-            ))}
-          </div>
-        )}
-      </section>
-
-      {/* Collab Projects */}
-      <section className="animate-fadeIn" style={{ animationDelay: '100ms' }}>
         <div className="mb-6 px-1">
           <h2 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2">
-            👥 Collab
-            <span className="text-slate-700 font-mono">/ {open.length}</span>
+            🌐 Community Projects
+            <span className="text-slate-700 font-mono">/ {community.length}</span>
           </h2>
           <p className="text-xs text-slate-600 mt-1.5 max-w-md">
-            Join an open project and track your progress alongside the community. Your completions sync in real-time for everyone to see.
+            Browse templates to copy, join collab projects to track your own progress, or contribute edits in open projects.
           </p>
         </div>
 
-        {open.length === 0 ? (
+        {community.length === 0 ? (
           <div className="bg-slate-900/50 border border-slate-800/60 border-dashed rounded-3xl p-12 text-center">
-            <p className="text-slate-600 text-sm font-medium">{search ? "No projects match your search." : "No collab projects yet."}</p>
+            <p className="text-slate-600 text-sm font-medium">{search ? "No projects match your search." : "No public projects yet."}</p>
           </div>
         ) : (
           <div className="grid sm:grid-cols-2 gap-6">
-            {open.map((c) => (
-              <DiscoverClient key={c.id} card={c} isLoggedIn={isLoggedIn} />
-            ))}
+            {community.map((c) => {
+              const vis = visLabel(c.visibility);
+              return (
+                <div key={c.id} className="relative">
+                  <span className={`absolute top-3 right-3 z-10 text-[10px] font-bold px-2 py-0.5 rounded-full ${vis.color}`}>
+                    {vis.badge}
+                  </span>
+                  <DiscoverClient card={c} isLoggedIn={isLoggedIn} />
+                </div>
+              );
+            })}
           </div>
         )}
       </section>

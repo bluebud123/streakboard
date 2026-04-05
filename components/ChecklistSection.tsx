@@ -612,6 +612,7 @@ interface Props {
   participating: ChecklistData[];
   archived?: ChecklistData[];
   userId: string;
+  forcedExpandId?: string | null;
   onExpandChange?: (id: string | null) => void;
   onOwnedChange?: (list: ChecklistData[]) => void;
   onParticipatingChange?: (list: ChecklistData[]) => void;
@@ -620,7 +621,7 @@ interface Props {
 
 export default function ChecklistSection({
   owned: initialOwned, participating: initialParticipating, archived = [], userId,
-  onExpandChange, onOwnedChange, onParticipatingChange, onCollabProgressChange
+  forcedExpandId, onExpandChange, onOwnedChange, onParticipatingChange, onCollabProgressChange
 }: Props) {
   const [owned, setOwned] = useState(initialOwned);
   const [participating] = useState(initialParticipating);
@@ -668,6 +669,21 @@ export default function ChecklistSection({
   // Add-project popup
   const [addPopupOpen, setAddPopupOpen] = useState(false);
   const addPopupRef = useRef<HTMLDivElement>(null);
+
+  // Sync forced expand from parent (right panel project click)
+  const expandRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (forcedExpandId && forcedExpandId !== expanded) {
+      setExpanded(forcedExpandId);
+      onExpandChange?.(forcedExpandId);
+      // Scroll to the project card
+      setTimeout(() => {
+        const el = document.querySelector(`[data-checklist-id="${forcedExpandId}"]`);
+        el?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 100);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [forcedExpandId]);
 
   // Close popup on outside click
   useEffect(() => {
@@ -1137,8 +1153,8 @@ export default function ChecklistSection({
         <div className="relative" ref={addPopupRef}>
           <button
             onClick={() => setAddPopupOpen((p) => !p)}
-            className="w-8 h-8 flex items-center justify-center bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-lg transition-all shadow-md hover:shadow-amber-500/20 active:scale-95"
-            title="Add project"
+            className={`w-8 h-8 flex items-center justify-center font-bold rounded-xl text-lg transition-all shadow-md active:scale-95 ${addPopupOpen ? "bg-slate-700 hover:bg-slate-600 text-slate-300 rotate-45" : "bg-amber-500 hover:bg-amber-400 text-slate-950 hover:shadow-amber-500/20"}`}
+            title={addPopupOpen ? "Close" : "Add project"}
           >+</button>
           {addPopupOpen && (
             <div className="absolute right-0 top-10 z-20 bg-slate-900 border border-slate-700 rounded-2xl shadow-xl p-2 min-w-[160px] animate-fadeIn">
@@ -1237,6 +1253,7 @@ export default function ChecklistSection({
           return (
             <div
               key={cl.id}
+              data-checklist-id={cl.id}
               draggable={cl.isOwner}
               onDragStart={() => cl.isOwner && handleCardDragStart(cl.id)}
               onDragOver={(e) => handleCardDragOver(e, cl.id)}

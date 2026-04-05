@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { auth } from "@/auth";
-import Link from "next/link";
+import AppHeader from "@/components/AppHeader";
 import DiscoverList from "./DiscoverList";
 
 export const metadata = {
@@ -49,34 +49,14 @@ export default async function DiscoverPage() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 animate-fadeIn">
-      <header className="border-b border-slate-800/60 px-6 py-4 flex items-center justify-between sticky top-0 z-40 bg-slate-950/80 backdrop-blur-md transition-all duration-200">
-        <Link href={session ? "/dashboard" : "/"} className="text-xl font-bold text-amber-500 hover:text-amber-400 transition-colors tracking-tight">Streakboard</Link>
-        <div className="flex items-center gap-5">
-          {session ? (
-            <>
-              <Link href="/dashboard" className="text-sm text-slate-400 hover:text-white transition-colors relative after:absolute after:bottom-[-4px] after:left-0 after:h-px after:w-0 hover:after:w-full after:bg-amber-400 after:transition-all after:duration-200">
-                Dashboard
-              </Link>
-              <Link href="/logs" className="text-sm text-slate-400 hover:text-white transition-colors relative after:absolute after:bottom-[-4px] after:left-0 after:h-px after:w-0 hover:after:w-full after:bg-amber-400 after:transition-all after:duration-200">
-                Log
-              </Link>
-            </>
-          ) : (
-            <Link href="/signup" className="px-4 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg text-sm transition-all hover:scale-105 active:scale-95 shadow-lg shadow-amber-500/20">
-              Create yours →
-            </Link>
-          )}
-        </div>
-      </header>
-
+      <AppHeader />
       <main className="max-w-3xl mx-auto px-4 py-12 space-y-12">
         <div className="px-1">
           <h1 className="text-3xl font-black text-white tracking-tight">Explore Projects</h1>
           <p className="text-slate-500 text-sm mt-2 font-medium max-w-xl">
-            Copy a community template to your account, or join an open project and track your progress alongside others.
+            Browse community templates, join open projects, and track your progress alongside others.
           </p>
         </div>
-
         <DiscoverList cards={cards} isLoggedIn={!!session} />
       </main>
     </div>
