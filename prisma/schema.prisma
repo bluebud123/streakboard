@@ -30,16 +30,19 @@ model User {
 }
 
 model CheckIn {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  date      String
-  minutes   Int      @default(0)
-  note      String?
-  studyTime String?
-  createdAt DateTime @default(now())
+  id          String     @id @default(cuid())
+  userId      String
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  checklistId String?
+  checklist   Checklist? @relation(fields: [checklistId], references: [id], onDelete: SetNull)
+  date        String
+  minutes     Int        @default(0)
+  note        String?
+  studyTime   String?
+  createdAt   DateTime   @default(now())
 
   @@index([userId, date])
+  @@index([checklistId])
 }
 
 model Checklist {
@@ -51,10 +54,14 @@ model Checklist {
   visibility   String                 @default("PRIVATE")
   slug         String?                @unique
   templateOf   String?
+  order        Int                    @default(0)
+  deadline     DateTime?
+  archivedAt   DateTime?
   createdAt    DateTime               @default(now())
   items        ChecklistItem[]
   participants ChecklistParticipant[]
   requests     ProjectRequest[]
+  checkIns     CheckIn[]
 }
 
 model ChecklistItem {

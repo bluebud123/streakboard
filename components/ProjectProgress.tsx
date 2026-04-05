@@ -7,6 +7,7 @@ interface Props {
   expandedId: string | null;
   onSelect: (id: string) => void;
   onSectionClick?: (sectionId: string) => void;
+  onCountdownClick?: (projectId: string) => void;
 }
 
 function countSection(items: TreeItem[]): { done: number; total: number } {
@@ -25,7 +26,7 @@ function countAll(items: TreeItem[]): { done: number; total: number } {
   return countSection(items);
 }
 
-export default function ProjectProgress({ projects, expandedId, onSelect, onSectionClick }: Props) {
+export default function ProjectProgress({ projects, expandedId, onSelect, onSectionClick, onCountdownClick }: Props) {
   const selected = projects.find((p) => p.id === expandedId) ?? null;
   const sections = selected?.items.filter((it) => it.isSection) ?? [];
   const hasUngrouped = selected?.items.some((it) => !it.isSection) ?? false;
@@ -77,6 +78,38 @@ export default function ProjectProgress({ projects, expandedId, onSelect, onSect
       {selected && (sections.length > 0 || hasUngrouped) && (
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
           <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3 truncate">{selected.name}</h3>
+
+          {/* Deadline countdown widget */}
+          {selected.deadline && (() => {
+            const daysLeft = Math.ceil((new Date(selected.deadline).getTime() - Date.now()) / 86400000);
+            const isOverdue = daysLeft < 0;
+            const isUrgent = daysLeft <= 7 && daysLeft >= 0;
+            const urgencyBg = isOverdue
+              ? "bg-red-500/10 border border-red-500/30"
+              : isUrgent
+                ? "bg-amber-500/10 border border-amber-500/30"
+                : "bg-slate-800 border border-slate-700";
+            const valueColor = isOverdue ? "text-red-400" : isUrgent ? "text-amber-400" : "text-slate-200";
+            return (
+              <button
+                onClick={() => onCountdownClick?.(selected.id)}
+                className={`w-full flex items-center gap-3 mb-4 rounded-xl px-3 py-2.5 text-left transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] hover:brightness-110 ${urgencyBg} ${onCountdownClick ? "cursor-pointer" : "cursor-default"}`}
+                title="Click to expand this project"
+              >
+                <span className="text-2xl leading-none">🔥</span>
+                <div>
+                  <div className={`text-2xl font-black leading-tight ${valueColor}`}>{Math.abs(daysLeft)}d</div>
+                  <div className="text-[10px] text-slate-500 uppercase tracking-wider">{isOverdue ? "overdue" : "to deadline"}</div>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <span className="text-xs text-slate-400 truncate block">{selected.name}</span>
+                  {onCountdownClick && (
+                    <span className="text-[9px] text-slate-600 uppercase tracking-wider">click to expand ↗</span>
+                  )}
+                </div>
+              </button>
+            );
+          })()}
           <div className="space-y-3">
             {/* Ungrouped tasks (depth-1, not under a section) */}
             {hasUngrouped && (() => {

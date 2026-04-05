@@ -29,23 +29,55 @@ function nestedItems(userId: string) {
   };
 }
 
+function serializeChecklist(cl: any) {
+  return {
+    ...JSON.parse(JSON.stringify(cl)),
+    items: cl.items ?? [],
+    createdAt: cl.createdAt instanceof Date ? cl.createdAt.toISOString() : cl.createdAt,
+    deadline: cl.deadline instanceof Date ? cl.deadline.toISOString() : cl.deadline ?? null,
+    archivedAt: cl.archivedAt instanceof Date ? cl.archivedAt.toISOString() : cl.archivedAt ?? null,
+  };
+}
+
 export default async function DashboardPage() {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
 
   const userId = session.user.id;
 
-  const [user, checkIns, ownedChecklists, participatingChecklists, recentRequests] = await Promise.all([
-    prisma.user.findUnique({ where: { id: userId }, select: { name: true, username: true, studyingFor: true, examDate: true, isAdmin: true } }),
-    prisma.checkIn.findMany({ where: { userId }, orderBy: { date: "desc" } }),
-    prisma.checklist.findMany({
+  const [
+    user,
+    checkIns,
+    ownedChecklists,
+    archivedOwnedChecklists,
+    participatingChecklists,
+    recentRequests,
+  ] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: { name: true, username: true, studyingFor: true, examDate: true, isAdmin: true },
+    }),
+    prisma.checkIn.findMany({
       where: { userId },
+      orderBy: { date: "desc" },
+      include: { checklist: { select: { name: true } } },
+    }),
+    prisma.checklist.findMany({
+      where: { userId, archivedAt: null },
       include: {
         items: nestedItems(userId),
         participants: { include: { user: { select: { id: true, name: true, username: true } } } },
         requests: { where: { status: "PENDING" }, include: { requester: { select: { name: true, username: true } } } },
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: { order: "asc" },
+    }),
+    prisma.checklist.findMany({
+      where: { userId, archivedAt: { not: null } },
+      include: {
+        items: nestedItems(userId),
+        participants: { include: { user: { select: { id: true, name: true, username: true } } } },
+      },
+      orderBy: { archivedAt: "desc" },
     }),
     prisma.checklist.findMany({
       where: { participants: { some: { userId } }, userId: { not: userId } },
@@ -78,11 +110,12 @@ export default async function DashboardPage() {
     note: c.note,
     studyTime: (c as { studyTime?: string | null }).studyTime ?? null,
     createdAt: c.createdAt.toISOString(),
+    checklistId: c.checklistId ?? null,
+    checklistName: (c as any).checklist?.name ?? null,
   }));
 
   const todayLogs = allCheckIns.filter((c) => c.date === today);
 
-  // Ensure all fields are plain serializable values
   const serializedUser = {
     name: user.name ?? "",
     username: user.username ?? "",
@@ -98,7 +131,8 @@ export default async function DashboardPage() {
       todayLogs={todayLogs}
       allCheckIns={allCheckIns}
       username={(session.user as { username: string }).username}
-      ownedChecklists={ownedChecklists as never}
+      ownedChecklists={ownedChecklists.map(serializeChecklist) as never}
+      archivedChecklists={archivedOwnedChecklists.map(serializeChecklist) as never}
       participatingChecklists={participatingChecklists as never}
       recentRequests={JSON.parse(JSON.stringify(recentRequests))}
       userId={userId}

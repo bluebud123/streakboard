@@ -27,8 +27,11 @@ export interface ChecklistData {
   userId: string;
   name: string;
   description?: string | null;
-  visibility: "PRIVATE" | "PUBLIC_TEMPLATE" | "PUBLIC_COLLAB" | "PUBLIC_EDIT";
+  visibility: "PRIVATE" | "PRIVATE_COLLAB" | "PUBLIC_TEMPLATE" | "PUBLIC_COLLAB" | "PUBLIC_EDIT";
   slug?: string | null;
+  deadline?: string | null;
+  archivedAt?: string | null;
+  order?: number;
   items: TreeItem[];
   participants: { user: { id: string; name: string; username: string } }[];
   user?: { name: string; username: string };
@@ -49,15 +52,17 @@ interface CollabProgress {
 
 const VIS_LABEL: Record<string, string> = {
   PRIVATE: "🔒 Private",
+  PRIVATE_COLLAB: "🔒 Private Group",
   PUBLIC_TEMPLATE: "🔗 Template",
   PUBLIC_COLLAB: "👥 Collab",
   PUBLIC_EDIT: "🤝 Collab + Edit",
 };
 const VIS_DESCRIPTIONS: Record<string, string> = {
   PRIVATE: "Only you can see and edit this project.",
+  PRIVATE_COLLAB: "You + invited members. Progress syncs among all members in real-time.",
   PUBLIC_TEMPLATE: "Anyone can view and copy to their own account.",
-  PUBLIC_COLLAB: "Anyone can join and track their own progress.",
-  PUBLIC_EDIT: "Anyone can join, add and edit items.",
+  PUBLIC_COLLAB: "Anyone can join and track their own progress. Leaderboard shown.",
+  PUBLIC_EDIT: "Anyone can join, add and edit items. Leaderboard shown.",
 };
 const CATEGORY_COLOR: Record<string, string> = {
   Medicine: "bg-emerald-500/20 text-emerald-400",
@@ -160,6 +165,9 @@ function normaliseChecklist(raw: Record<string, unknown>): ChecklistData {
     description: raw.description as string | null | undefined,
     visibility: (raw.visibility as ChecklistData["visibility"]) ?? "PRIVATE",
     slug: raw.slug as string | null | undefined,
+    deadline: raw.deadline as string | null | undefined,
+    archivedAt: raw.archivedAt as string | null | undefined,
+    order: (raw.order as number) ?? 0,
     participants: (raw.participants as ChecklistData["participants"]) ?? [],
     user: raw.user as ChecklistData["user"],
     items: ((raw.items as Record<string, unknown>[]) ?? []).map((i) => normaliseTreeItem(i)),
@@ -168,45 +176,79 @@ function normaliseChecklist(raw: Record<string, unknown>): ChecklistData {
 
 // ─── Visibility Modal ─────────────────────────────────────────────────────────
 
-function VisibilityModal({ current, name, onSave, onClose }: {
-  current: ChecklistData["visibility"]; name: string;
+function VisibilityModal({ current, name, checklistId, participants, onSave, onClose, onInvite, onRemoveMember }: {
+  current: ChecklistData["visibility"]; name: string; checklistId: string;
+  participants: ChecklistData["participants"];
   onSave: (v: ChecklistData["visibility"]) => Promise<void>; onClose: () => void;
+  onInvite: (checklistId: string, username: string) => Promise<void>;
+  onRemoveMember: (checklistId: string, memberId: string) => Promise<void>;
 }) {
-  const ALL: ChecklistData["visibility"][] = ["PRIVATE", "PUBLIC_TEMPLATE", "PUBLIC_COLLAB", "PUBLIC_EDIT"];
+  const ALL: ChecklistData["visibility"][] = ["PRIVATE", "PRIVATE_COLLAB", "PUBLIC_TEMPLATE", "PUBLIC_COLLAB", "PUBLIC_EDIT"];
   const [selected, setSelected] = useState<ChecklistData["visibility"]>(current);
   const [saving, setSaving] = useState(false);
-  const toPrivate = selected === "PRIVATE" && current !== "PRIVATE";
-  const fromPrivate = selected !== "PRIVATE" && current === "PRIVATE";
+  const [inviteUsername, setInviteUsername] = useState("");
+  const [inviting, setInviting] = useState(false);
   const changed = selected !== current;
 
   async function handleSave() { setSaving(true); await onSave(selected); setSaving(false); }
+  async function handleInvite() {
+    if (!inviteUsername.trim()) return;
+    setInviting(true);
+    await onInvite(checklistId, inviteUsername.trim());
+    setInviteUsername("");
+    setInviting(false);
+  }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-      <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-sm p-6 space-y-4 shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fadeIn">
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-sm p-6 space-y-5 shadow-2xl animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
         <div>
-          <h3 className="font-semibold text-slate-100 text-sm">Project settings</h3>
-          <p className="text-slate-500 text-xs mt-0.5 truncate">{name}</p>
+          <h3 className="font-black text-white uppercase text-xs tracking-[0.2em] mb-1">Project settings</h3>
+          <p className="text-slate-500 text-sm font-medium truncate">{name}</p>
         </div>
         <div className="space-y-2">
           {ALL.map((v) => (
-            <label key={v} className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${selected === v ? "border-amber-500 bg-amber-500/10" : "border-slate-700 hover:border-slate-600"}`}>
-              <input type="radio" name="visibility" value={v} checked={selected === v} onChange={() => setSelected(v)} className="mt-0.5 accent-amber-500" />
+            <label key={v} className={`flex items-start gap-3 p-3 rounded-2xl border cursor-pointer transition-all ${selected === v ? "border-amber-500 bg-amber-500/10 shadow-lg shadow-amber-500/5" : "border-slate-800 bg-slate-800/50 hover:border-slate-700"}`}>
+              <input type="radio" name="visibility" value={v} checked={selected === v} onChange={() => setSelected(v)} className="mt-1 accent-amber-500 shrink-0" />
               <div>
-                <p className="text-sm font-medium text-slate-200">{VIS_LABEL[v]}</p>
-                <p className="text-xs text-slate-400 mt-0.5">{VIS_DESCRIPTIONS[v]}</p>
+                <p className="text-sm font-bold text-slate-100">{VIS_LABEL[v]}</p>
+                <p className="text-[10px] text-slate-500 font-medium leading-relaxed mt-0.5">{VIS_DESCRIPTIONS[v]}</p>
               </div>
             </label>
           ))}
         </div>
-        {(toPrivate || fromPrivate) && (
-          <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 text-xs text-amber-300">
-            ⚠️ {toPrivate ? "Switching to Private — current participants will lose access." : "Switching to Public — this project will be visible to everyone."}
+
+        {/* PRIVATE_COLLAB member management */}
+        {selected === "PRIVATE_COLLAB" && (
+          <div className="border-t border-slate-800 pt-4 space-y-3">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Members</p>
+            {participants.length > 0 && (
+              <div className="space-y-2">
+                {participants.map(p => (
+                  <div key={p.user.id} className="flex items-center justify-between text-sm">
+                    <span className="text-slate-300">@{p.user.username}</span>
+                    <button onClick={() => onRemoveMember(checklistId, p.user.id)}
+                      className="text-[10px] text-red-500/70 hover:text-red-400 transition-colors">Remove</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <input value={inviteUsername} onChange={(e) => setInviteUsername(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleInvite(); } }}
+                placeholder="@username"
+                className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-2 py-1.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500" />
+              <button onClick={handleInvite} disabled={inviting || !inviteUsername.trim()}
+                className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 text-xs font-bold rounded-lg">
+                {inviting ? "…" : "Invite"}
+              </button>
+            </div>
           </div>
         )}
-        <div className="flex gap-2 pt-1">
-          <button onClick={onClose} className="flex-1 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm rounded-xl transition-colors">Cancel</button>
-          <button onClick={handleSave} disabled={!changed || saving} className="flex-1 py-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-40 text-slate-950 text-sm font-semibold rounded-xl transition-colors">
+
+        <div className="flex gap-3 pt-1">
+          <button onClick={onClose} className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-2xl transition-all">Cancel</button>
+          <button onClick={handleSave} disabled={!changed || saving} className="flex-1 py-3 bg-amber-500 hover:bg-amber-400 disabled:opacity-40 text-slate-950 text-xs font-black rounded-2xl transition-all shadow-lg shadow-amber-500/10">
             {saving ? "Saving…" : "Save changes"}
           </button>
         </div>
@@ -312,17 +354,17 @@ function ItemNode({
 
   if (item.isSection) {
     return (
-      <div data-item-id={item.id} className={`mt-3 first:mt-0 ${isDragOver ? "border-t-2 border-amber-500 rounded" : ""}`}>
-        <div className={`flex items-center gap-1.5 py-1.5 px-1 group ${isDragging ? "opacity-40" : ""}`} {...commonProps}>
+      <div data-item-id={item.id} className={`mt-6 first:mt-0 transition-all ${isDragOver ? "ring-2 ring-amber-500 rounded-lg bg-amber-500/5" : ""}`}>
+        <div className={`flex items-center gap-2 py-2 px-1 group transition-opacity ${isDragging ? "opacity-40" : ""}`} {...commonProps}>
           {/* Collapse toggle */}
           <button
             onClick={() => onToggleCollapse(item.id)}
-            className="text-slate-600 hover:text-slate-400 text-xs w-4 shrink-0 transition-colors"
+            className="text-slate-500 hover:text-white transition-all w-5 h-5 flex items-center justify-center rounded hover:bg-slate-800"
           >
-            {isCollapsed ? "▶" : "▼"}
+            {isCollapsed ? "▸" : "▾"}
           </button>
 
-          {canEdit && <span className="text-slate-600 text-xs opacity-0 group-hover:opacity-100 cursor-grab shrink-0">⠿</span>}
+          {canEdit && <span className="text-slate-700 hover:text-slate-400 text-base leading-none cursor-grab active:cursor-grabbing shrink-0 transition-colors hidden lg:block select-none">⠿</span>}
 
           {/* Section text — double-click to edit */}
           {isEditing ? (
@@ -335,13 +377,13 @@ function ItemNode({
                 if (e.key === "Escape") onEditCancel();
               }}
               onBlur={() => onEditSave(checklistId, item.id)}
-              className="flex-1 bg-slate-700 border border-amber-500 rounded px-2 py-0.5 text-xs font-bold text-amber-400 uppercase tracking-wider focus:outline-none"
+              className="flex-1 bg-slate-800 border border-amber-500 rounded-lg px-2 py-0.5 text-xs font-black text-amber-500 uppercase tracking-[0.15em] focus:outline-none focus:ring-1 focus:ring-amber-500/30"
             />
           ) : (
             <span
-              className="flex-1 text-xs font-bold text-amber-400 uppercase tracking-wider border-b border-slate-700 pb-0.5 cursor-text"
+              className="flex-1 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] cursor-default group-hover:text-slate-300 transition-colors"
               onDoubleClick={() => canEdit && onEditStart(item.id, item.text)}
-              title={canEdit ? "Double-click to edit" : undefined}
+              title={canEdit ? "Double-click to rename section" : undefined}
             >
               {item.text}
             </span>
@@ -349,31 +391,31 @@ function ItemNode({
 
           {/* Section progress */}
           {sectionStats && sectionStats.total > 0 && (
-            <span className="text-xs text-slate-500 shrink-0 font-mono">{sectionStats.done}/{sectionStats.total}</span>
+            <span className="text-[10px] text-slate-500 font-black uppercase tracking-tighter bg-slate-800 px-1.5 py-0.5 rounded-full border border-slate-700/50">{sectionStats.done}/{sectionStats.total}</span>
           )}
 
           {canEdit && !isEditing && (
             <button
               onClick={() => onEditStart(item.id, item.text)}
-              className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-slate-300 text-xs transition-all shrink-0"
-              title="Edit section name"
+              className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-amber-400 text-xs transition-all p-1"
+              title="Edit section"
             >✎</button>
           )}
 
           {canEdit && (
             <button
               onClick={() => onDelete(checklistId, item.id)}
-              className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 text-xs transition-all shrink-0"
+              className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 text-xs transition-all p-1"
             >✕</button>
           )}
         </div>
 
         {/* Section mini progress bar */}
         {sectionStats && sectionStats.total > 0 && (
-          <div className="ml-6 mb-1">
-            <div className="w-full bg-slate-700/50 rounded-full h-0.5">
+          <div className="ml-7 mr-4 mb-2">
+            <div className="w-full bg-slate-800 rounded-full h-1 border border-slate-800/50">
               <div
-                className="bg-amber-500/60 h-0.5 rounded-full transition-all"
+                className="bg-amber-500 h-1 rounded-full transition-all duration-500 shadow-[0_0_8px_rgba(245,158,11,0.2)]"
                 style={{ width: `${Math.round((sectionStats.done / sectionStats.total) * 100)}%` }}
               />
             </div>
@@ -382,7 +424,7 @@ function ItemNode({
 
         {/* Children */}
         {!isCollapsed && (
-          <div className="ml-4 space-y-0.5 border-l border-slate-700/50 pl-3">
+          <div className="ml-2 space-y-0.5 border-l-2 border-slate-800/50 pl-5 mb-4 mt-1">
             {item.children?.map((child) => (
               <ItemNode key={child.id} item={child} checklistId={checklistId} canEdit={canEdit} canCheck={canCheck}
                 collapsedIds={collapsedIds} onToggleCollapse={onToggleCollapse}
@@ -396,54 +438,54 @@ function ItemNode({
 
             {/* Inline add input — section children */}
             {addingTo?.checklistId === checklistId && addingTo.parentId === item.id ? (
-              <div className="flex gap-1.5 mt-1.5">
+              <div className="flex gap-1.5 mt-2 pr-4 animate-fadeIn">
                 <input
                   autoFocus value={newItemText} onChange={(e) => onNewItemChange(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); onAddSubmit(checklistId); } if (e.key === "Escape") onAddCancel(); }}
-                  placeholder="New task…"
-                  className="flex-1 bg-slate-700 border border-slate-600 rounded-lg px-2 py-1 text-sm text-slate-100 placeholder-slate-400 focus:outline-none focus:border-amber-500"
+                  placeholder="New task name…"
+                  className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-1.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/30 transition-all"
                 />
-                <button onClick={() => onAddSubmit(checklistId)} className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-semibold rounded-lg">Add</button>
-                <button onClick={onAddCancel} className="text-slate-500 text-xs px-1">✕</button>
+                <button onClick={() => onAddSubmit(checklistId)} className="px-4 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black rounded-xl transition-all shadow-lg shadow-amber-500/10">Add</button>
+                <button onClick={onAddCancel} className="text-slate-500 hover:text-white text-xs px-2 transition-colors">✕</button>
               </div>
             ) : canEdit ? (
-              <button onClick={() => onAddChild(item.id, 1)} className="text-xs text-slate-600 hover:text-amber-400 transition-colors py-0.5">+ add task</button>
+              <button onClick={() => onAddChild(item.id, 1)} className="text-[10px] font-bold text-slate-600 hover:text-amber-500 transition-all uppercase tracking-widest py-1 px-2 hover:bg-slate-800 rounded-lg">+ add task</button>
             ) : null}
           </div>
         )}
         {isCollapsed && hasChildren && (
-          <p className="ml-6 text-xs text-slate-600 italic">{item.children!.length} task{item.children!.length !== 1 ? "s" : ""} hidden</p>
+          <p className="ml-7 text-[10px] font-bold text-slate-600 uppercase tracking-widest italic">{item.children!.length} items hidden</p>
         )}
       </div>
     );
   }
 
   // ── Task / Subtask ────────────────────────────────────────────────────────
-  const indent = item.depth === 2 ? "ml-4" : "";
+  const indent = item.depth === 2 ? "ml-6" : "";
 
   return (
-    <div data-item-id={item.id} className={`${indent} ${isDragOver ? "border-t-2 border-amber-500 rounded" : ""}`}>
-      <div className={`flex items-center gap-1.5 group py-0.5 ${isDragging ? "opacity-40" : ""}`} {...commonProps}>
+    <div data-item-id={item.id} className={`${indent} transition-all ${isDragOver ? "border-t-2 border-amber-500 bg-amber-500/5 rounded" : ""}`}>
+      <div className={`flex items-center gap-2 group py-1.5 px-1 rounded-lg hover:bg-slate-800/40 transition-colors ${isDragging ? "opacity-40" : ""}`} {...commonProps}>
         {/* Collapse (only tasks with children) */}
         {hasChildren ? (
-          <button onClick={() => onToggleCollapse(item.id)} className="text-slate-600 hover:text-slate-400 text-xs w-4 shrink-0">
-            {isCollapsed ? "▶" : "▼"}
+          <button onClick={() => onToggleCollapse(item.id)} className="text-slate-600 hover:text-white transition-all w-4 h-4 flex items-center justify-center rounded">
+            {isCollapsed ? "▸" : "▾"}
           </button>
         ) : (
           <span className="w-4 shrink-0" />
         )}
 
-        {canEdit && <span className="text-slate-600 text-xs opacity-0 group-hover:opacity-100 cursor-grab shrink-0">⠿</span>}
+        {canEdit && <span className="text-slate-700 hover:text-slate-400 text-base leading-none cursor-grab active:cursor-grabbing shrink-0 transition-colors hidden lg:block select-none">⠿</span>}
 
         {/* − button: remove last revision (undo accidental check) */}
         {item.revisions.length > 0 && canCheck ? (
           <button
             onClick={() => onRemoveRevision(checklistId, item.id)}
             title={`Remove last revision (${item.revisions.length} logged)`}
-            className="w-6 h-6 flex items-center justify-center rounded-full border border-slate-600 hover:border-red-500 text-slate-400 hover:text-red-400 text-sm shrink-0 transition-colors leading-none"
+            className="w-5 h-5 flex items-center justify-center rounded-full border border-slate-700 bg-slate-800 hover:border-red-500 hover:bg-red-500/10 text-slate-500 hover:text-red-400 text-lg shrink-0 transition-all leading-none shadow-sm"
           >−</button>
         ) : (
-          <span className="w-4 shrink-0" />
+          <span className="w-5 shrink-0" />
         )}
 
         {/* Checkbox — click always logs revision */}
@@ -452,7 +494,7 @@ function ItemNode({
           checked={checked}
           onChange={() => canCheck && onCheck(checklistId, item.id)}
           disabled={!canCheck}
-          className="w-5 h-5 rounded accent-amber-500 cursor-pointer shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-5 h-5 rounded-lg accent-amber-500 cursor-pointer shrink-0 disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:scale-110 active:scale-90"
         />
 
         {/* Text — double-click or pencil to edit */}
@@ -464,11 +506,11 @@ function ItemNode({
               if (e.key === "Escape") onEditCancel();
             }}
             onBlur={() => onEditSave(checklistId, item.id)}
-            className="flex-1 bg-slate-700 border border-amber-500 rounded px-2 py-0.5 text-sm text-slate-100 focus:outline-none"
+            className="flex-1 bg-slate-800 border border-amber-500 rounded-lg px-2 py-0.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-amber-500/30"
           />
         ) : (
           <span
-            className={`flex-1 text-sm leading-snug ${checked ? "line-through text-slate-500" : item.depth === 2 ? "text-slate-400" : "text-slate-300"}`}
+            className={`flex-1 text-sm leading-snug cursor-default select-none ${checked ? "line-through text-slate-500" : item.depth === 2 ? "text-slate-400" : "text-slate-200"}`}
             onDoubleClick={() => canEdit && onEditStart(item.id, item.text)}
           >
             {item.text}
@@ -483,24 +525,24 @@ function ItemNode({
 
           return (
             <span
-              className="text-[10px] text-amber-500/60 shrink-0 font-mono whitespace-nowrap flex items-center gap-1"
+              className="text-[10px] text-amber-500/60 shrink-0 font-black uppercase tracking-tighter whitespace-nowrap flex items-center gap-1.5"
               title={`Reviewed ${item.revisions.length}×. Unchecking keeps your history; use − to remove the last review entry.`}
             >
-              <span className="font-bold">+{item.revisions.length}</span>
+              <span className="bg-amber-500/10 px-1.5 py-0.5 rounded-full">+{item.revisions.length}</span>
               <span className="flex items-center gap-1 overflow-hidden">
                 {visible.map((d, i) => (
-                  <span key={i} className="bg-slate-800 px-1 rounded">{d}</span>
+                  <span key={i} className="bg-slate-800/80 px-1.5 py-0.5 rounded border border-slate-700/50">{d}</span>
                 ))}
                 {hasMore && !showAllDates && (
                   <button 
                     onClick={(e) => { e.stopPropagation(); setShowAllDates(true); }}
-                    className="hover:text-amber-400 underline decoration-dotted"
+                    className="hover:text-amber-400 underline decoration-dotted transition-colors"
                   >...</button>
                 )}
                 {showAllDates && (
                   <button 
                     onClick={(e) => { e.stopPropagation(); setShowAllDates(false); }}
-                    className="hover:text-amber-400"
+                    className="hover:text-amber-400 transition-colors"
                   >«</button>
                 )}
               </span>
@@ -512,22 +554,22 @@ function ItemNode({
         {canEdit && !isEditing && (
           <button
             onClick={() => onEditStart(item.id, item.text)}
-            className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-slate-300 text-xs transition-all shrink-0"
-            title="Edit"
+            className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-amber-400 text-xs transition-all p-1"
+            title="Rename"
           >✎</button>
         )}
 
         {canEdit && (
           <button
             onClick={() => onDelete(checklistId, item.id)}
-            className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 text-xs transition-all shrink-0"
+            className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 text-xs transition-all p-1"
           >✕</button>
         )}
       </div>
 
       {/* Subtask children */}
       {!isCollapsed && item.depth < 2 && (
-        <div className="ml-9 space-y-0.5">
+        <div className="ml-9 space-y-0.5 mt-1 border-l border-slate-800 pl-4 mb-2">
           {item.children?.map((child) => (
             <ItemNode key={child.id} item={child} checklistId={checklistId} canEdit={canEdit} canCheck={canCheck}
               collapsedIds={collapsedIds} onToggleCollapse={onToggleCollapse}
@@ -541,23 +583,23 @@ function ItemNode({
 
           {/* Inline add — task children */}
           {addingTo?.checklistId === checklistId && addingTo.parentId === item.id ? (
-            <div className="flex gap-1.5 mt-1">
+            <div className="flex gap-1.5 mt-2 pr-4 animate-fadeIn">
               <input
                 autoFocus value={newItemText} onChange={(e) => onNewItemChange(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); onAddSubmit(checklistId); } if (e.key === "Escape") onAddCancel(); }}
-                placeholder="New subtask…"
-                className="flex-1 bg-slate-700 border border-slate-600 rounded-lg px-2 py-1 text-sm text-slate-100 placeholder-slate-400 focus:outline-none focus:border-amber-500"
+                placeholder="New subtask name…"
+                className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-1.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/30 transition-all"
               />
-              <button onClick={() => onAddSubmit(checklistId)} className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-semibold rounded-lg">Add</button>
-              <button onClick={onAddCancel} className="text-slate-500 text-xs px-1">✕</button>
+              <button onClick={() => onAddSubmit(checklistId)} className="px-4 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black rounded-xl transition-all shadow-lg shadow-amber-500/10">Add</button>
+              <button onClick={onAddCancel} className="text-slate-500 hover:text-white text-xs px-2 transition-colors">✕</button>
             </div>
           ) : canEdit ? (
-            <button onClick={() => onAddChild(item.id, item.depth + 1)} className="text-xs text-slate-600 hover:text-amber-400 transition-colors">+ subtask</button>
+            <button onClick={() => onAddChild(item.id, item.depth + 1)} className="text-[10px] font-bold text-slate-600 hover:text-amber-500 transition-all uppercase tracking-widest py-1 px-2 hover:bg-slate-800 rounded-lg">+ subtask</button>
           ) : null}
         </div>
       )}
       {isCollapsed && hasChildren && (
-        <p className="ml-9 text-xs text-slate-600 italic">{item.children!.length} subtask{item.children!.length !== 1 ? "s" : ""} hidden</p>
+        <p className="ml-9 text-[10px] font-bold text-slate-600 uppercase tracking-widest italic">{item.children!.length} subtasks hidden</p>
       )}
     </div>
   );
@@ -568,6 +610,7 @@ function ItemNode({
 interface Props {
   owned: ChecklistData[];
   participating: ChecklistData[];
+  archived?: ChecklistData[];
   userId: string;
   onExpandChange?: (id: string | null) => void;
   onOwnedChange?: (list: ChecklistData[]) => void;
@@ -576,7 +619,7 @@ interface Props {
 }
 
 export default function ChecklistSection({
-  owned: initialOwned, participating: initialParticipating, userId,
+  owned: initialOwned, participating: initialParticipating, archived = [], userId,
   onExpandChange, onOwnedChange, onParticipatingChange, onCollabProgressChange
 }: Props) {
   const [owned, setOwned] = useState(initialOwned);
@@ -612,6 +655,31 @@ export default function ChecklistSection({
   const ownedRef = useRef(owned);
   useEffect(() => { ownedRef.current = owned; }, [owned]);
 
+  // Card-level drag (separate from item drag)
+  const cardDragIdRef = useRef<string | null>(null);
+  const [cardDragOverId, setCardDragOverId] = useState<string | null>(null);
+
+  // Edit mode per project (set of ids currently in edit mode)
+  const [editModeIds, setEditModeIds] = useState<Set<string>>(new Set());
+
+  // Inline deadline editing
+  const [editingDeadlineId, setEditingDeadlineId] = useState<string | null>(null);
+
+  // Add-project popup
+  const [addPopupOpen, setAddPopupOpen] = useState(false);
+  const addPopupRef = useRef<HTMLDivElement>(null);
+
+  // Close popup on outside click
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (addPopupRef.current && !addPopupRef.current.contains(e.target as Node)) {
+        setAddPopupOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
   // Collab progress (lazy loaded per checklist)
   const [collabProgress, setCollabProgress] = useState<Record<string, CollabProgress>>({});
   const [loadingProgress, setLoadingProgress] = useState<string | null>(null);
@@ -622,28 +690,39 @@ export default function ChecklistSection({
     }
   }, [newMode, templates.length]);
 
-  // Load collab progress when a collab checklist is expanded
+  // Load collab progress when a collab/private-collab checklist is expanded
+  async function fetchProgress(checklistId: string) {
+    const r = await fetch("/api/checklists", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "getSectionProgress", checklistId }),
+    });
+    if (!r.ok) return;
+    const data = await r.json();
+    setCollabProgress((prev) => {
+      const next = { ...prev, [checklistId]: data };
+      onCollabProgressChange?.(next);
+      return next;
+    });
+  }
+
   useEffect(() => {
     if (!expanded) return;
     const cl = [...owned, ...participating].find((c) => c.id === expanded);
     if (!cl) return;
-    if (cl.visibility !== "PUBLIC_COLLAB" && cl.visibility !== "PUBLIC_EDIT") return;
-    if (collabProgress[expanded] || loadingProgress === expanded) return;
+    const isCollab = cl.visibility === "PUBLIC_COLLAB" || cl.visibility === "PUBLIC_EDIT" || cl.visibility === "PRIVATE_COLLAB";
+    if (!isCollab) return;
 
-    setLoadingProgress(expanded);
-    fetch("/api/checklists", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "getSectionProgress", checklistId: expanded }),
-    })
-      .then((r) => r.json())
-      .then((data) => {
-        const next = { ...collabProgress, [expanded]: data };
-        setCollabProgress(next);
-        onCollabProgressChange?.(next);
-      })
-      .catch(() => {})
-      .finally(() => setLoadingProgress(null));
+    if (!collabProgress[expanded] && loadingProgress !== expanded) {
+      setLoadingProgress(expanded);
+      fetchProgress(expanded).finally(() => setLoadingProgress(null));
+    }
+
+    // Polling for real-time updates (every 8s) for private collab
+    if (cl.visibility === "PRIVATE_COLLAB" || cl.visibility === "PUBLIC_COLLAB" || cl.visibility === "PUBLIC_EDIT") {
+      const interval = setInterval(() => fetchProgress(expanded), 8000);
+      return () => clearInterval(interval);
+    }
   }, [expanded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function patchOwned(id: string, updater: (cl: ChecklistData) => ChecklistData) {
@@ -767,6 +846,105 @@ export default function ChecklistSection({
     } else {
       toast.error("Failed to delete project — please try again.");
     }
+  }
+
+  // ── Archive project ──────────────────────────────────────────────────────
+  async function archiveProject(checklistId: string, name: string) {
+    if (!confirm(`Archive "${name}"? You can restore it from the Archived section.`)) return;
+    const res = await fetch("/api/checklists", {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "archiveProject", checklistId }),
+    });
+    if (res.ok) { window.location.reload(); }
+    else { toast.error("Failed to archive project — please try again."); }
+  }
+
+  // ── Unarchive project ────────────────────────────────────────────────────
+  async function unarchiveProject(checklistId: string) {
+    const res = await fetch("/api/checklists", {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "unarchiveProject", checklistId }),
+    });
+    if (res.ok) { window.location.reload(); }
+    else { toast.error("Failed to restore project — please try again."); }
+  }
+
+  // ── Set deadline ─────────────────────────────────────────────────────────
+  async function saveDeadline(checklistId: string, deadline: string | null) {
+    const res = await fetch("/api/checklists", {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "setDeadline", checklistId, deadline }),
+    });
+    if (res.ok) {
+      patchOwned(checklistId, (c) => ({ ...c, deadline: deadline }));
+      setEditingDeadlineId(null);
+    } else { toast.error("Failed to set deadline — please try again."); }
+  }
+
+  // ── Reorder projects (card drag) ─────────────────────────────────────────
+  async function reorderProjects(ids: string[]) {
+    await fetch("/api/checklists", {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "reorderProjects", ids }),
+    });
+  }
+
+  // ── Invite member (PRIVATE_COLLAB) ───────────────────────────────────────
+  async function inviteMember(checklistId: string, username: string) {
+    const res = await fetch("/api/checklists", {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "inviteMember", checklistId, username }),
+    });
+    if (res.ok) { toast.success(`@${username} invited!`); }
+    else {
+      const d = await res.json().catch(() => ({}));
+      toast.error(d.error || "Failed to invite member.");
+    }
+  }
+
+  // ── Remove member (PRIVATE_COLLAB) ───────────────────────────────────────
+  async function removeMember(checklistId: string, memberId: string) {
+    const res = await fetch("/api/checklists", {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "removeMember", checklistId, memberId }),
+    });
+    if (res.ok) {
+      patchOwned(checklistId, (c) => ({
+        ...c,
+        participants: c.participants.filter(p => p.user.id !== memberId),
+      }));
+      toast.success("Member removed.");
+    } else { toast.error("Failed to remove member — please try again."); }
+  }
+
+  // ── Toggle edit mode ─────────────────────────────────────────────────────
+  function toggleEditMode(id: string) {
+    setEditModeIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  // ── Card drag (reorder projects) ─────────────────────────────────────────
+  function handleCardDragStart(id: string) { cardDragIdRef.current = id; }
+  function handleCardDragOver(e: React.DragEvent, id: string) { e.preventDefault(); setCardDragOverId(id); }
+  function handleCardDragLeave() { setCardDragOverId(null); }
+  function handleCardDragEnd() { cardDragIdRef.current = null; setCardDragOverId(null); }
+  function handleCardDrop(targetId: string) {
+    const dragId = cardDragIdRef.current;
+    handleCardDragEnd();
+    if (!dragId || dragId === targetId) return;
+    const list = owned;
+    const fromIdx = list.findIndex(c => c.id === dragId);
+    const toIdx = list.findIndex(c => c.id === targetId);
+    if (fromIdx === -1 || toIdx === -1) return;
+    const reordered = [...list];
+    const [moved] = reordered.splice(fromIdx, 1);
+    reordered.splice(toIdx, 0, moved);
+    setOwned(reordered);
+    onOwnedChange?.(reordered);
+    reorderProjects(reordered.map(c => c.id));
   }
 
   // ── Add item ─────────────────────────────────────────────────────────────
@@ -936,29 +1114,48 @@ export default function ChecklistSection({
   // ─────────────────────────────────────────────────────────────────────────
 
   const allProjects = [
-    ...owned.map((cl) => ({ ...cl, isOwner: true, canEdit: true, canCheck: true })),
+    ...owned.map((cl) => ({
+      ...cl,
+      isOwner: true,
+      canEdit: editModeIds.has(cl.id), // edit mode controlled by toggle
+      canCheck: true,
+    })),
     ...participating.map((cl) => ({
       ...cl,
       isOwner: false,
-      canEdit: cl.visibility === "PUBLIC_EDIT",
+      canEdit: cl.visibility === "PUBLIC_EDIT" && editModeIds.has(cl.id),
       canCheck: true,
     })),
   ];
   const isEmpty = allProjects.length === 0;
 
   return (
-    <section className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+    <section className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm hover:border-slate-700/50 transition-all duration-300">
       {/* Section header */}
       <div className="flex items-center justify-between mb-4">
         <h2 className="font-semibold text-slate-200">Projects</h2>
-        <div className="flex gap-2">
-          <button onClick={() => openNew("upload")} className="text-sm text-slate-400 hover:text-slate-200 transition-colors">↑ Upload</button>
-          <button onClick={() => openNew("template")} className="text-sm text-slate-400 hover:text-amber-300 transition-colors">
-            {newMode === "template" ? "Cancel" : "Templates"}
-          </button>
-          <button onClick={() => openNew("blank")} className="text-sm text-amber-400 hover:text-amber-300 transition-colors">
-            {newMode === "blank" ? "Cancel" : "+ New"}
-          </button>
+        <div className="relative" ref={addPopupRef}>
+          <button
+            onClick={() => setAddPopupOpen((p) => !p)}
+            className="w-8 h-8 flex items-center justify-center bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-lg transition-all shadow-md hover:shadow-amber-500/20 active:scale-95"
+            title="Add project"
+          >+</button>
+          {addPopupOpen && (
+            <div className="absolute right-0 top-10 z-20 bg-slate-900 border border-slate-700 rounded-2xl shadow-xl p-2 min-w-[160px] animate-fadeIn">
+              <button onClick={() => { openNew("blank"); setAddPopupOpen(false); }}
+                className="w-full text-left px-3 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white rounded-xl transition-colors">
+                ✦ New project
+              </button>
+              <button onClick={() => { openNew("template"); setAddPopupOpen(false); }}
+                className="w-full text-left px-3 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white rounded-xl transition-colors">
+                📋 From template
+              </button>
+              <button onClick={() => { openNew("upload"); setAddPopupOpen(false); }}
+                className="w-full text-left px-3 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white rounded-xl transition-colors">
+                ↑ Upload .md
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1031,63 +1228,149 @@ export default function ChecklistSection({
           const isOpen = expanded === cl.id;
           const progress = collabProgress[cl.id] ?? null;
 
+          const isEditMode = editModeIds.has(cl.id);
+          const isCardDragOver = cardDragOverId === cl.id && cardDragIdRef.current !== cl.id;
+          const deadlineDaysLeft = cl.deadline
+            ? Math.ceil((new Date(cl.deadline).getTime() - Date.now()) / 86400000)
+            : null;
+
           return (
-            <div key={cl.id} className="bg-slate-800 rounded-xl overflow-hidden">
-              {/* Card header */}
-              <div className="px-4 py-3 flex items-center gap-2">
-                <button onClick={() => { const next = isOpen ? null : cl.id; setExpanded(next); onExpandChange?.(next); }} className="shrink-0 text-slate-400 hover:text-slate-200 text-sm">
-                  {isOpen ? "▾" : "▸"}
-                </button>
-
-                {/* Project title — double-click to rename */}
-                {cl.isOwner && editingTitleId === cl.id ? (
-                  <input
-                    autoFocus
-                    value={editingTitleText}
-                    onChange={(e) => setEditingTitleText(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") { e.preventDefault(); saveTitleEdit(cl.id); }
-                      if (e.key === "Escape") setEditingTitleId(null);
-                    }}
-                    onBlur={() => saveTitleEdit(cl.id)}
-                    className="flex-1 bg-slate-700 border border-amber-500 rounded px-2 py-0.5 text-sm text-slate-100 focus:outline-none"
-                  />
-                ) : (
-                  <span
-                    className="flex-1 text-sm font-medium text-slate-200 truncate cursor-default"
-                    onDoubleClick={() => { if (cl.isOwner) { setEditingTitleId(cl.id); setEditingTitleText(cl.name); } }}
-                    title={cl.isOwner ? "Double-click to rename" : cl.name}
+            <div
+              key={cl.id}
+              draggable={cl.isOwner}
+              onDragStart={() => cl.isOwner && handleCardDragStart(cl.id)}
+              onDragOver={(e) => handleCardDragOver(e, cl.id)}
+              onDragLeave={handleCardDragLeave}
+              onDragEnd={handleCardDragEnd}
+              onDrop={() => handleCardDrop(cl.id)}
+              className={`bg-slate-900 border rounded-2xl overflow-hidden transition-all duration-200 shadow-sm hover:shadow-md ${isCardDragOver ? "border-amber-500 bg-amber-500/5" : "border-slate-800 hover:border-slate-700 hover:bg-slate-800/80"}`}
+            >
+              {/* Card header — Row 1: expand + title + drag handle + progress count */}
+              <div className="px-4 pt-3.5 pb-1">
+                <div className="flex items-center gap-2">
+                  {/* Expand toggle (clicking left area collapses/expands) */}
+                  <button
+                    onClick={() => { const next = isOpen ? null : cl.id; setExpanded(next); onExpandChange?.(next); }}
+                    className="shrink-0 text-slate-500 hover:text-white text-sm transition-colors p-1 -ml-1"
                   >
-                    {cl.name}
-                  </span>
-                )}
-
-                {!cl.isOwner && cl.user && <span className="text-xs text-slate-500 shrink-0">by @{cl.user.username}</span>}
-                <span className="text-xs text-slate-400 shrink-0">{done}/{total}</span>
-
-                {cl.isOwner && (
-                  <button onClick={() => setVisModal(cl)} title="Project settings"
-                    className="text-xs px-1.5 py-0.5 rounded bg-slate-700 hover:bg-slate-600 text-slate-400 hover:text-slate-200 transition-colors shrink-0">
-                    {VIS_LABEL[cl.visibility]}
+                    {isOpen ? "▾" : "▸"}
                   </button>
-                )}
 
-                {cl.slug && cl.visibility !== "PRIVATE" && (
-                  <Link href={`/project/${cl.slug}`} target="_blank" className="text-xs text-amber-400 hover:text-amber-300 shrink-0">↗</Link>
-                )}
+                  {/* Title — click to expand, double-click to rename */}
+                  {cl.isOwner && editingTitleId === cl.id ? (
+                    <input
+                      autoFocus
+                      value={editingTitleText}
+                      onChange={(e) => setEditingTitleText(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") { e.preventDefault(); saveTitleEdit(cl.id); }
+                        if (e.key === "Escape") setEditingTitleId(null);
+                      }}
+                      onBlur={() => saveTitleEdit(cl.id)}
+                      className="flex-1 bg-slate-800 border border-amber-500 rounded-lg px-2 py-0.5 text-sm font-bold text-slate-100 focus:outline-none"
+                    />
+                  ) : (
+                    <span
+                      className="flex-1 text-base font-bold text-slate-100 truncate cursor-default hover:text-white transition-colors"
+                      onClick={() => { const next = isOpen ? null : cl.id; setExpanded(next); onExpandChange?.(next); }}
+                      onDoubleClick={() => { if (cl.isOwner) { setEditingTitleId(cl.id); setEditingTitleText(cl.name); } }}
+                      title={cl.isOwner ? "Click to expand · Double-click to rename" : cl.name}
+                    >
+                      {cl.name}
+                    </span>
+                  )}
 
+                  <span className="text-xs font-mono text-slate-500 shrink-0">{done}/{total}</span>
+
+                  {/* Drag handle for card reorder */}
+                  {cl.isOwner && (
+                    <span className="text-slate-600 hover:text-slate-400 text-base cursor-grab active:cursor-grabbing shrink-0 select-none hidden lg:block" title="Drag to reorder">⠿</span>
+                  )}
+                </div>
+
+                {/* Row 2: deadline + visibility badge + link */}
+                <div className="flex items-center gap-2 flex-wrap mt-1 ml-6">
+                  {/* Deadline */}
+                  {cl.isOwner && editingDeadlineId === cl.id ? (
+                    <input
+                      type="date"
+                      autoFocus
+                      defaultValue={cl.deadline ? cl.deadline.slice(0, 10) : ""}
+                      onChange={(e) => saveDeadline(cl.id, e.target.value || null)}
+                      onBlur={(e) => { if (!e.target.value) saveDeadline(cl.id, null); else setEditingDeadlineId(null); }}
+                      className="bg-slate-800 border border-amber-500 rounded-lg px-2 py-0.5 text-xs text-slate-100 focus:outline-none"
+                    />
+                  ) : (
+                    <button
+                      onClick={() => cl.isOwner && setEditingDeadlineId(cl.id)}
+                      className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full transition-colors ${
+                        deadlineDaysLeft === null
+                          ? "text-slate-600 hover:text-slate-400"
+                          : deadlineDaysLeft < 0
+                          ? "bg-red-500/10 text-red-400 border border-red-500/30"
+                          : deadlineDaysLeft <= 7
+                          ? "bg-amber-500/10 text-amber-400 border border-amber-500/30"
+                          : "bg-slate-800 text-slate-400 border border-slate-700"
+                      }`}
+                      title={cl.isOwner ? "Click to set deadline" : undefined}
+                    >
+                      {deadlineDaysLeft === null
+                        ? (cl.isOwner ? "+ deadline" : "")
+                        : deadlineDaysLeft < 0
+                        ? `🔥 ${Math.abs(deadlineDaysLeft)}d overdue`
+                        : `🗓 ${deadlineDaysLeft}d left`}
+                    </button>
+                  )}
+
+                  {/* Visibility badge */}
+                  {cl.isOwner && (
+                    <button onClick={() => setVisModal(cl)} title="Project settings"
+                      className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700 hover:border-slate-600 text-slate-400 hover:text-slate-200 transition-all shrink-0 active:scale-95">
+                      {VIS_LABEL[cl.visibility]}
+                    </button>
+                  )}
+                  {!cl.isOwner && cl.user && (
+                    <span className="text-[10px] text-slate-500">by @{cl.user.username}</span>
+                  )}
+                  {cl.slug && cl.visibility !== "PRIVATE" && cl.visibility !== "PRIVATE_COLLAB" && (
+                    <Link href={`/project/${cl.slug}`} target="_blank" className="text-[10px] text-amber-500 hover:text-amber-400 transition-colors">↗ view</Link>
+                  )}
+                </div>
+
+                {/* Row 3: edit toggle + archive + delete */}
                 {cl.isOwner && (
-                  <button onClick={() => deleteProject(cl.id)} className="text-slate-600 hover:text-red-400 text-xs transition-colors shrink-0">✕</button>
+                  <div className="flex items-center gap-2 mt-1.5 ml-6">
+                    <button
+                      onClick={() => toggleEditMode(cl.id)}
+                      className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border transition-all ${
+                        isEditMode
+                          ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20"
+                          : "bg-slate-800 border-slate-700 text-slate-500 hover:text-slate-300"
+                      }`}
+                    >
+                      {isEditMode ? "✓ Done editing" : "✎ Edit"}
+                    </button>
+                    <button
+                      onClick={() => archiveProject(cl.id, cl.name)}
+                      className="text-[10px] text-slate-600 hover:text-amber-400 transition-colors px-1"
+                      title="Archive project"
+                    >📦 Archive</button>
+                    <button
+                      onClick={() => deleteProject(cl.id)}
+                      className="text-[10px] text-slate-600 hover:text-red-400 transition-colors px-1"
+                      title="Delete project"
+                    >✕ Delete</button>
+                  </div>
                 )}
               </div>
 
               {/* Overall progress bar */}
-              <div className="px-4 pb-2">
-                <div className="flex items-center gap-2">
-                  <div className="flex-1 bg-slate-700 rounded-full h-1.5">
-                    <div className="bg-amber-500 h-1.5 rounded-full transition-all" style={{ width: `${pct}%` }} />
+              <div className="px-4 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 bg-slate-800 rounded-full h-1.5 border border-slate-800/50">
+                    <div className="bg-amber-500 h-full rounded-full transition-all duration-500 shadow-[0_0_8px_rgba(245,158,11,0.2)]" style={{ width: `${pct}%` }} />
                   </div>
-                  <span className="text-xs text-slate-500 shrink-0">{pct}%</span>
+                  <span className="text-[11px] font-bold text-slate-500 shrink-0 min-w-[28px]">{pct}%</span>
                 </div>
               </div>
 
@@ -1162,9 +1445,46 @@ export default function ChecklistSection({
         })}
       </div>
 
+      {/* Archived projects */}
+      {archived.length > 0 && (
+        <div className="bg-slate-900/60 border border-slate-800/60 rounded-2xl overflow-hidden mt-3">
+          <div className="px-4 py-3 border-b border-slate-800/50 flex items-center gap-2">
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">📦 Archived</span>
+            <span className="text-[10px] bg-slate-800 text-slate-500 px-1.5 py-0.5 rounded-full">{archived.length}</span>
+          </div>
+          <div className="divide-y divide-slate-800/40">
+            {archived.map((cl) => (
+              <div key={cl.id} className="flex items-center justify-between px-4 py-3 hover:bg-slate-800/30 transition-colors group/arc">
+                <div className="min-w-0">
+                  <p className="text-sm text-slate-400 font-medium truncate">{cl.name}</p>
+                  {cl.archivedAt && (
+                    <p className="text-[10px] text-slate-600 mt-0.5">
+                      Archived {new Date(cl.archivedAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+                    </p>
+                  )}
+                </div>
+                <button
+                  onClick={() => unarchiveProject(cl.id)}
+                  className="text-[11px] text-slate-500 hover:text-amber-400 px-2 py-1 rounded-lg border border-slate-700 hover:border-amber-500/40 transition-all shrink-0 ml-3 opacity-0 group-hover/arc:opacity-100"
+                >Restore</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Visibility modal */}
       {visModal && (
-        <VisibilityModal current={visModal.visibility} name={visModal.name} onSave={(v) => saveVisibility(visModal, v)} onClose={() => setVisModal(null)} />
+        <VisibilityModal
+          current={visModal.visibility}
+          name={visModal.name}
+          checklistId={visModal.id}
+          participants={visModal.participants}
+          onSave={(v) => saveVisibility(visModal, v)}
+          onClose={() => setVisModal(null)}
+          onInvite={inviteMember}
+          onRemoveMember={removeMember}
+        />
       )}
     </section>
   );

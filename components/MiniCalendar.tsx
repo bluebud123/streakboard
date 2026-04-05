@@ -13,17 +13,19 @@ interface CheckInRecord {
 interface Props {
   checkIns: CheckInRecord[];
   reviewsByDate?: Record<string, string[]>;
+  defaultDate?: string; // YYYY-MM-DD — pre-selected date on mount
 }
 
 const DAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 const MONTHS = ["January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December"];
 
-export default function MiniCalendar({ checkIns, reviewsByDate = {} }: Props) {
+export default function MiniCalendar({ checkIns, reviewsByDate = {}, defaultDate }: Props) {
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
-  const [selected, setSelected] = useState<string | null>(null);
+  // Auto-select today (or provided defaultDate) on mount
+  const [selected, setSelected] = useState<string | null>(defaultDate ?? null);
 
   // Group check-ins by date
   const checkInsByDate: Record<string, CheckInRecord[]> = {};
@@ -62,22 +64,26 @@ export default function MiniCalendar({ checkIns, reviewsByDate = {} }: Props) {
   }
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
-      <div className="flex items-center justify-between mb-3">
-        <button onClick={prevMonth} className="text-slate-500 hover:text-slate-300 text-sm px-1">‹</button>
-        <span className="text-sm font-semibold text-slate-200">{MONTHS[month]} {year}</span>
-        <button onClick={nextMonth} className="text-slate-500 hover:text-slate-300 text-sm px-1">›</button>
+    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 hover:border-slate-700/50 transition-all duration-300 shadow-sm">
+      <div className="flex items-center justify-between mb-4">
+        <button onClick={prevMonth} className="p-1.5 text-slate-500 hover:text-white hover:bg-slate-800 rounded-lg transition-all active:scale-90">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" /></svg>
+        </button>
+        <span className="text-sm font-bold text-slate-100 tracking-tight">{MONTHS[month]} {year}</span>
+        <button onClick={nextMonth} className="p-1.5 text-slate-500 hover:text-white hover:bg-slate-800 rounded-lg transition-all active:scale-90">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" /></svg>
+        </button>
       </div>
 
-      <div className="grid grid-cols-7 mb-1">
+      <div className="grid grid-cols-7 mb-2">
         {DAYS.map((d) => (
-          <div key={d} className="text-center text-xs text-slate-600 font-medium py-0.5">{d}</div>
+          <div key={d} className="text-center text-[10px] text-slate-500 font-bold uppercase tracking-widest py-1">{d}</div>
         ))}
       </div>
 
-      <div className="grid grid-cols-7 gap-y-0.5">
+      <div className="grid grid-cols-7 gap-1">
         {cells.map((day, i) => {
-          if (!day) return <div key={`blank-${i}`} />;
+          if (day === null) return <div key={`blank-${i}`} />;
           const key = dateKey(day);
           const logsForDay = checkInsByDate[key] ?? [];
           const hasCheckIn = logsForDay.length > 0;
@@ -85,16 +91,22 @@ export default function MiniCalendar({ checkIns, reviewsByDate = {} }: Props) {
           const isSelected = key === selected;
 
           return (
-            <button key={key} onClick={() => setSelected(isSelected ? null : key)}
-              className={`relative flex flex-col items-center justify-center h-8 w-full rounded-lg text-xs font-medium transition-colors
-                ${isSelected ? "bg-amber-500 text-slate-950" :
-                  isToday ? "bg-amber-500/20 text-amber-400 border border-amber-500/40" :
-                  hasCheckIn ? "text-slate-300 hover:bg-slate-800" :
-                  "text-slate-600 hover:bg-slate-800"}`}
+            <button
+              key={key}
+              onClick={() => setSelected(isSelected ? null : key)}
+              className={`relative flex items-center justify-center h-8 w-full rounded-lg text-xs font-bold transition-all duration-200 active:scale-95
+                ${isSelected 
+                  ? "bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/20 scale-105 z-10" 
+                  : isToday 
+                    ? "bg-amber-500/10 text-amber-500 border border-amber-500/30 hover:bg-amber-500/20" 
+                    : hasCheckIn 
+                      ? "text-slate-200 hover:bg-slate-800 hover:text-white bg-slate-800/30" 
+                      : "text-slate-500 hover:bg-slate-800 hover:text-slate-300"
+                }`}
             >
               {day}
               {hasCheckIn && !isSelected && (
-                <span className={`absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full ${isToday ? "bg-amber-400" : "bg-amber-500/70"}`} />
+                <span className={`absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full ${isToday ? "bg-amber-500" : "bg-amber-500/60"}`} />
               )}
             </button>
           );
@@ -102,17 +114,22 @@ export default function MiniCalendar({ checkIns, reviewsByDate = {} }: Props) {
       </div>
 
       {selected && (
-        <div className="mt-3 pt-3 border-t border-slate-800 space-y-3">
-          <p className="text-xs text-slate-500">
-            {new Date(selected + "T12:00:00").toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
-          </p>
+        <div className="mt-4 pt-4 border-t border-slate-800/60 space-y-4 animate-fadeIn">
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+              {new Date(selected + "T12:00:00").toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
+            </p>
+            {hasSelectedData && (
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-500 uppercase">Activity</span>
+            )}
+          </div>
 
           {!hasSelectedData && (
             <p className="text-xs text-slate-600 italic">No activity on this day.</p>
           )}
 
           {selectedLogs.length > 0 && (
-            <details>
+            <details open={selected === todayKey}>
               <summary className="text-xs font-semibold text-slate-400 cursor-pointer list-none flex items-center gap-1 select-none">
                 <span className="text-amber-400 text-[10px]">▶</span> Sessions ({selectedLogs.length})
                 <span className="text-slate-600 ml-1">{selectedLogs.reduce((s, l) => s + l.minutes, 0)} min total</span>
@@ -130,7 +147,7 @@ export default function MiniCalendar({ checkIns, reviewsByDate = {} }: Props) {
           )}
 
           {selectedReviews.length > 0 && (
-            <details>
+            <details open={selected === todayKey}>
               <summary className="text-xs font-semibold text-slate-400 cursor-pointer list-none flex items-center gap-1 select-none">
                 <span className="text-emerald-400 text-[10px]">▶</span> Reviewed ({selectedReviews.length})
               </summary>

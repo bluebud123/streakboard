@@ -8,7 +8,7 @@ export async function POST(req: Request) {
   const session = await auth();
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { minutes, note, studyTime, date: reqDate } = await req.json();
+  const { minutes, note, studyTime, date: reqDate, checklistId } = await req.json();
   const date = reqDate ?? localDateKey(new Date());
 
   const checkIn = await prisma.checkIn.create({
@@ -18,7 +18,9 @@ export async function POST(req: Request) {
       minutes: minutes ?? 0,
       note: note?.trim() || null,
       studyTime: studyTime?.trim() || null,
+      checklistId: checklistId || null,
     },
+    include: { checklist: { select: { name: true } } },
   });
 
   return NextResponse.json({
@@ -28,6 +30,8 @@ export async function POST(req: Request) {
     note: checkIn.note,
     studyTime: checkIn.studyTime,
     createdAt: checkIn.createdAt.toISOString(),
+    checklistId: checkIn.checklistId,
+    checklistName: checkIn.checklist?.name ?? null,
   });
 }
 
@@ -50,6 +54,7 @@ export async function PATCH(req: Request) {
       note: note !== undefined ? (note?.trim() || null) : log.note,
       studyTime: studyTime !== undefined ? (studyTime?.trim() || null) : log.studyTime,
     },
+    include: { checklist: { select: { name: true } } },
   });
 
   return NextResponse.json({
@@ -59,6 +64,8 @@ export async function PATCH(req: Request) {
     note: updated.note,
     studyTime: updated.studyTime,
     createdAt: updated.createdAt.toISOString(),
+    checklistId: updated.checklistId,
+    checklistName: updated.checklist?.name ?? null,
   });
 }
 
@@ -93,6 +100,7 @@ export async function GET(req: Request) {
       ...(dateFilter ? { date: dateFilter } : {}),
     },
     orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+    include: { checklist: { select: { name: true } } },
   });
 
   return NextResponse.json(
@@ -103,6 +111,8 @@ export async function GET(req: Request) {
       note: c.note,
       studyTime: c.studyTime,
       createdAt: c.createdAt.toISOString(),
+      checklistId: c.checklistId,
+      checklistName: c.checklist?.name ?? null,
     }))
   );
 }

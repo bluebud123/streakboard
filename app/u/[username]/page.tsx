@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { auth } from "@/auth";
 import { calcStreaks, buildHeatmap, calcStudyStats } from "@/lib/streak";
 import Heatmap from "@/components/Heatmap";
 import StreakStats from "@/components/StreakStats";
@@ -73,37 +74,53 @@ export async function generateMetadata({ params }: { params: Promise<{ username:
 }
 
 export default async function PublicProfilePage({ params }: { params: Promise<{ username: string }> }) {
-  const { username } = await params;
+  const [{ username }, session] = await Promise.all([params, auth()]);
   const profile = await getProfile(username);
   if (!profile) notFound();
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-slate-950 text-slate-200 animate-fadeIn">
       {/* Nav */}
-      <header className="border-b border-slate-800 px-6 py-4 flex items-center justify-between">
-        <Link href="/" className="text-xl font-bold text-amber-400">Streakboard</Link>
-        <Link
-          href="/signup"
-          className="px-4 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold rounded-lg text-sm transition-colors"
-        >
-          Create yours →
-        </Link>
+      <header className="border-b border-slate-800/60 px-6 py-4 flex items-center justify-between sticky top-0 z-40 bg-slate-950/80 backdrop-blur-md">
+        <Link href={session ? "/dashboard" : "/"} className="text-xl font-bold text-amber-500 hover:text-amber-400 transition-colors tracking-tight">Streakboard</Link>
+        {session ? (
+          <div className="flex items-center gap-5">
+            <Link href="/dashboard" className="text-sm text-slate-400 hover:text-white transition-colors relative after:absolute after:bottom-[-4px] after:left-0 after:h-px after:w-0 hover:after:w-full after:bg-amber-400 after:transition-all after:duration-200">
+              Dashboard
+            </Link>
+            <Link href="/logs" className="text-sm text-slate-400 hover:text-white transition-colors relative after:absolute after:bottom-[-4px] after:left-0 after:h-px after:w-0 hover:after:w-full after:bg-amber-400 after:transition-all after:duration-200">
+              Log
+            </Link>
+            <Link href="/settings" className="text-sm text-slate-400 hover:text-white transition-colors relative after:absolute after:bottom-[-4px] after:left-0 after:h-px after:w-0 hover:after:w-full after:bg-amber-400 after:transition-all after:duration-200">
+              Settings
+            </Link>
+          </div>
+        ) : (
+          <Link
+            href="/signup"
+            className="px-4 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg text-sm transition-all hover:scale-105 active:scale-95 shadow-lg shadow-amber-500/20"
+          >
+            Create yours →
+          </Link>
+        )}
       </header>
 
-      <main className="max-w-2xl mx-auto px-4 py-8 space-y-6">
+      <main className="max-w-2xl mx-auto px-4 py-12 space-y-8">
         {/* Profile header */}
-        <div className="flex items-center gap-4">
-          <div className="w-14 h-14 rounded-full bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-2xl font-bold text-amber-400">
+        <div className="flex items-center gap-6">
+          <div className="w-16 h-16 rounded-full bg-amber-500/10 border-2 border-amber-500/20 flex items-center justify-center text-3xl font-black text-amber-500 shadow-inner">
             {profile.name[0].toUpperCase()}
           </div>
           <div>
-            <h1 className="text-xl font-bold text-slate-100">{profile.name}</h1>
-            <p className="text-slate-400 text-sm">@{profile.username}</p>
+            <h1 className="text-2xl font-black text-white tracking-tight">{profile.name}</h1>
+            <p className="text-slate-500 font-medium">@{profile.username}</p>
           </div>
         </div>
 
         {/* Exam countdown */}
-        <ExamCountdown studyingFor={profile.studyingFor} examDate={profile.examDate} />
+        <div className="hover:scale-[1.01] transition-transform duration-200">
+          <ExamCountdown studyingFor={profile.studyingFor} examDate={profile.examDate} />
+        </div>
 
         {/* Stats */}
         <StreakStats
@@ -115,15 +132,15 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
         />
 
         {/* Heatmap */}
-        <section className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-          <h2 className="font-semibold text-slate-200 mb-4">Activity — last 20 weeks</h2>
+        <section className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm hover:border-slate-700 transition-all duration-300">
+          <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-6">Activity — last 20 weeks</h2>
           <Heatmap cells={profile.heatmap} />
         </section>
 
         {/* Projects */}
         {profile.checklists.length > 0 && (
-          <section className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-            <h2 className="font-semibold text-slate-200 mb-4">Projects</h2>
+          <section className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm hover:border-slate-700 transition-all duration-300">
+            <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-6">Projects</h2>
             <div className="space-y-3">
               {profile.checklists.map((cl) => (
                 <ChecklistCard key={cl.id} name={cl.name} done={cl.done} total={cl.total} slug={cl.slug} visibility={cl.visibility} />
@@ -131,6 +148,16 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
             </div>
           </section>
         )}
+
+        {/* Badges placeholder */}
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 hover:border-slate-700 transition-all duration-300">
+          <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-4">Badges</h3>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center opacity-40 grayscale">🏆</div>
+            <div className="w-10 h-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center opacity-40 grayscale">🔥</div>
+            <p className="text-slate-600 text-sm font-medium italic">Keep building your streak to unlock badges!</p>
+          </div>
+        </div>
 
         {/* Viral footer */}
         <ShareBanner username={profile.username} />

@@ -381,9 +381,10 @@ export async function PATCH(req: Request) {
     const cl = await prisma.checklist.findUnique({ where: { id: checklistId } });
     if (!cl || cl.userId !== userId) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     let slug = cl.slug;
-    if (visibility !== "PRIVATE" && !slug) {
+    const isPrivateType = visibility === "PRIVATE" || visibility === "PRIVATE_COLLAB";
+    if (!isPrivateType && !slug) {
       slug = await uniqueSlug(`${slugify(cl.name)}-${nanoid()}`);
-    } else if (visibility === "PRIVATE") {
+    } else if (isPrivateType) {
       slug = null;
     }
     const updated = await prisma.checklist.update({ where: { id: checklistId }, data: { visibility, slug } });
@@ -395,7 +396,7 @@ export async function PATCH(req: Request) {
     const { checklistId } = body;
     const cl = await prisma.checklist.findUnique({ where: { id: checklistId } });
     if (!cl || cl.userId === userId) return NextResponse.json({ error: "Cannot join own project" }, { status: 400 });
-    if (cl.visibility === "PRIVATE" || cl.visibility === "PUBLIC_TEMPLATE") {
+    if (cl.visibility === "PRIVATE" || cl.visibility === "PRIVATE_COLLAB" || cl.visibility === "PUBLIC_TEMPLATE") {
       return NextResponse.json({ error: "Not open for collaboration" }, { status: 403 });
     }
     const p = await prisma.checklistParticipant.upsert({
@@ -464,6 +465,72 @@ export async function PATCH(req: Request) {
     const cl = await prisma.checklist.findUnique({ where: { id: checklistId } });
     if (!cl || cl.userId !== userId) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     await prisma.checklist.delete({ where: { id: checklistId } });
+    return NextResponse.json({ ok: true });
+  }
+
+  // ── archiveProject ────────────────────────────────────────────────────────
+  if (action === "archiveProject") {
+    const { checklistId } = body;
+    const cl = await prisma.checklist.findUnique({ where: { id: checklistId } });
+    if (!cl || cl.userId !== userId) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    await prisma.checklist.update({ where: { id: checklistId }, data: { archivedAt: new Date() } });
+    return NextResponse.json({ ok: true });
+  }
+
+  // ── unarchiveProject ──────────────────────────────────────────────────────
+  if (action === "unarchiveProject") {
+    const { checklistId } = body;
+    const cl = await prisma.checklist.findUnique({ where: { id: checklistId } });
+    if (!cl || cl.userId !== userId) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    await prisma.checklist.update({ where: { id: checklistId }, data: { archivedAt: null } });
+    return NextResponse.json({ ok: true });
+  }
+
+  // ── setDeadline ───────────────────────────────────────────────────────────
+  if (action === "setDeadline") {
+    const { checklistId, deadline } = body;
+    const cl = await prisma.checklist.findUnique({ where: { id: checklistId } });
+    if (!cl || cl.userId !== userId) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    await prisma.checklist.update({
+      where: { id: checklistId },
+      data: { deadline: deadline ? new Date(deadline) : null },
+    });
+    return NextResponse.json({ ok: true });
+  }
+
+  // ── reorderProjects ───────────────────────────────────────────────────────
+  if (action === "reorderProjects") {
+    const { ids } = body;
+    if (!Array.isArray(ids)) return NextResponse.json({ error: "ids required" }, { status: 400 });
+    await prisma.$transaction(
+      (ids as string[]).map((id: string, i: number) =>
+        prisma.checklist.updateMany({ where: { id, userId }, data: { order: i } })
+      )
+    );
+    return NextResponse.json({ ok: true });
+  }
+
+  // ── inviteMember (PRIVATE_COLLAB) ─────────────────────────────────────────
+  if (action === "inviteMember") {
+    const { checklistId, username } = body;
+    const cl = await prisma.checklist.findUnique({ where: { id: checklistId } });
+    if (!cl || cl.userId !== userId) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    const invitee = await prisma.user.findUnique({ where: { username } });
+    if (!invitee) return NextResponse.json({ error: "User not found" }, { status: 404 });
+    const p = await prisma.checklistParticipant.upsert({
+      where: { checklistId_userId: { checklistId, userId: invitee.id } },
+      update: {},
+      create: { checklistId, userId: invitee.id },
+    });
+    return NextResponse.json(p);
+  }
+
+  // ── removeMember (PRIVATE_COLLAB) ─────────────────────────────────────────
+  if (action === "removeMember") {
+    const { checklistId, memberId } = body;
+    const cl = await prisma.checklist.findUnique({ where: { id: checklistId } });
+    if (!cl || cl.userId !== userId) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    await prisma.checklistParticipant.deleteMany({ where: { checklistId, userId: memberId } });
     return NextResponse.json({ ok: true });
   }
 

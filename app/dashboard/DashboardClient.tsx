@@ -6,7 +6,7 @@ import Link from "next/link";
 import ChecklistSection, { type ChecklistData, type TreeItem } from "@/components/ChecklistSection";
 import MiniCalendar from "@/components/MiniCalendar";
 import ProjectProgress from "@/components/ProjectProgress";
-import { calcStreaks } from "@/lib/streak";
+import { calcStreaks, localDateKey } from "@/lib/streak";
 import { toast } from "sonner";
 
 interface CheckIn {
@@ -16,6 +16,8 @@ interface CheckIn {
   note: string | null;
   studyTime: string | null;
   createdAt: string;
+  checklistId?: string | null;
+  checklistName?: string | null;
 }
 
 interface Props {
@@ -25,6 +27,7 @@ interface Props {
   allCheckIns: CheckIn[];
   username: string;
   ownedChecklists: ChecklistData[];
+  archivedChecklists?: ChecklistData[];
   participatingChecklists: ChecklistData[];
   recentRequests: any[];
   userId: string;
@@ -95,7 +98,7 @@ function LogEntry({ log, onEdit, onDelete }: {
           <input type="number" min={0} max={600} value={minutes} onChange={(e) => setMinutes(e.target.value)}
             placeholder="0"
             className="w-20 bg-slate-700 border border-slate-600 rounded px-2 py-1 text-sm text-slate-100 focus:outline-none focus:border-amber-500 placeholder-slate-600" />
-          <span className="text-slate-500 text-xs">min <span className="text-slate-600">(optional)</span></span>
+          <span className="text-slate-500 text-xs">min</span>
         </div>
         <div className="flex gap-2">
           <button onClick={save} disabled={saving}
@@ -114,6 +117,11 @@ function LogEntry({ log, onEdit, onDelete }: {
         <p className="text-sm text-slate-200 font-medium">
           {log.minutes > 0 ? `${log.minutes} min` : "—"}
           <span className="text-xs text-slate-500 font-normal ml-2">{formatLogTime(log.createdAt)}</span>
+          {log.checklistName && (
+            <span className="ml-2 text-[10px] bg-slate-700 text-slate-400 px-1.5 py-0.5 rounded-full">
+              📁 {log.checklistName}
+            </span>
+          )}
         </p>
         {log.note && <p className="text-xs text-slate-400 italic mt-0.5">"{log.note}"</p>}
       </div>
@@ -165,8 +173,8 @@ function Leaderboard({ progress, currentUserId }: { progress: CollabProgress; cu
   );
 }
 
-function ProjectRequests({ ownedProjects, recentRequests, onAction }: { 
-  ownedProjects: (ChecklistData & { requests?: any[] })[]; 
+function ProjectRequests({ ownedProjects, recentRequests, onAction }: {
+  ownedProjects: (ChecklistData & { requests?: any[] })[];
   recentRequests: any[];
   onAction: () => void;
 }) {
@@ -227,9 +235,25 @@ function ProjectRequests({ ownedProjects, recentRequests, onAction }: {
   );
 }
 
+function StatCard({ label, value, icon, highlight, danger }: { label: string; value: string; icon: string; highlight?: boolean; danger?: boolean }) {
+  const bg = danger
+    ? "bg-red-500/10 border border-red-500/30 hover:border-red-500/50 hover:shadow-red-500/5"
+    : highlight
+      ? "bg-amber-500/10 border border-amber-500/30 hover:border-amber-500/50 hover:shadow-amber-500/5"
+      : "bg-slate-900 border border-slate-800 hover:border-slate-700 hover:shadow-slate-950/50";
+  const valueColor = danger ? "text-red-400" : highlight ? "text-amber-400" : "text-slate-100";
+  return (
+    <div className={`rounded-xl p-4 text-center transition-all duration-200 hover:scale-[1.02] hover:shadow-lg ${bg}`}>
+      <div className="text-xl mb-1">{icon}</div>
+      <div className={`text-xl font-bold ${valueColor}`}>{value}</div>
+      <div className="text-xs text-slate-500 mt-0.5">{label}</div>
+    </div>
+  );
+}
+
 export default function DashboardClient({
   user, streaks, todayLogs: initTodayLogs, allCheckIns: initAllCheckIns,
-  username, ownedChecklists: initOwned, participatingChecklists: initParticipating, 
+  username, ownedChecklists: initOwned, archivedChecklists = [], participatingChecklists: initParticipating,
   recentRequests: initRecentRequests, userId,
 }: Props) {
   const [allCheckIns, setAllCheckIns] = useState(initAllCheckIns);
@@ -238,6 +262,7 @@ export default function DashboardClient({
   // Log form
   const [newNote, setNewNote] = useState("");
   const [newMinutes, setNewMinutes] = useState("");
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [logLoading, setLogLoading] = useState(false);
   // Timer
   const [timerRunning, setTimerRunning] = useState(false);
@@ -270,6 +295,7 @@ export default function DashboardClient({
     const s = secs % 60;
     return `${m}:${String(s).padStart(2, "0")}`;
   }
+
   const [mobileTab, setMobileTab] = useState<"projects" | "log" | "calendar">("projects");
   const [copied, setCopied] = useState(false);
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
@@ -279,6 +305,35 @@ export default function DashboardClient({
   const [participatingState, setParticipatingState] = useState<ChecklistData[]>(initParticipating);
   const [collabProgress, setCollabProgress] = useState<Record<string, CollabProgress>>({});
   const [recentRequestsState, setRecentRequestsState] = useState(initRecentRequests);
+
+  // Recomputed from STATE — updates instantly on checkbox
+  const reviewsByDate: Record<string, string[]> = {};
+  for (const cl of [...ownedState, ...participatingState]) {
+    const sub = collectReviewsByDate(cl.items);
+    for (const [d, texts] of Object.entries(sub)) {
+      if (!reviewsByDate[d]) reviewsByDate[d] = [];
+      for (const t of texts) if (!reviewsByDate[d].includes(t)) reviewsByDate[d].push(t);
+    }
+  }
+
+  // Recalculate streak using UNION of check-in dates + review dates
+  function recalcStreak(logs: CheckIn[]) {
+    const reviewDates = Object.keys(reviewsByDate);
+    const allDates = [...new Set([...logs.map(c => c.date), ...reviewDates])];
+    const { currentStreak: s } = calcStreaks(allDates);
+    setCurrentStreak(s);
+  }
+
+  // On mount: boost streak if reviews cover days with no check-ins
+  useEffect(() => {
+    const reviewDates = Object.keys(reviewsByDate);
+    if (reviewDates.length > 0) {
+      const allDates = [...new Set([...initAllCheckIns.map(c => c.date), ...reviewDates])];
+      const { currentStreak: s } = calcStreaks(allDates);
+      setCurrentStreak(s);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function refreshData() {
     const res = await fetch("/api/checklists");
@@ -292,22 +347,12 @@ export default function DashboardClient({
 
   const profileUrl = typeof window !== "undefined" ? `${window.location.origin}/u/${username}` : `/u/${username}`;
   const examDays = user.examDate ? daysUntil(user.examDate) : null;
-  const todayPrefix = new Date().toISOString().slice(0, 10);
+  const todayKey = localDateKey(new Date());
 
-  // Recomputed from STATE (not props) — updates instantly on checkbox
-  const reviewsByDate: Record<string, string[]> = {};
-  for (const cl of [...ownedState, ...participatingState]) {
-    const sub = collectReviewsByDate(cl.items);
-    for (const [d, texts] of Object.entries(sub)) {
-      if (!reviewsByDate[d]) reviewsByDate[d] = [];
-      for (const t of texts) if (!reviewsByDate[d].includes(t)) reviewsByDate[d].push(t);
-    }
-  }
-
-  const todayReviewed = reviewsByDate[todayPrefix] ?? [];
+  const todayReviewed = reviewsByDate[todayKey] ?? [];
   const hasLoggedToday = todayLogs.length > 0;
 
-  // allProjects from state — ProjectProgress updates instantly too
+  // allProjects from state
   const allProjects: (ChecklistData & { isOwner: boolean })[] = [
     ...ownedState.map((cl) => ({ ...cl, isOwner: true })),
     ...participatingState.map((cl) => ({ ...cl, isOwner: false })),
@@ -315,7 +360,7 @@ export default function DashboardClient({
 
   const selectedProject = allProjects.find((p) => p.id === expandedProjectId);
   const selectedProgress = expandedProjectId ? collabProgress[expandedProjectId] : null;
-  const isProjectShareable = !!(selectedProject?.slug && selectedProject.visibility !== "PRIVATE");
+  const isProjectShareable = !!(selectedProject?.slug && selectedProject.visibility !== "PRIVATE" && selectedProject.visibility !== "PRIVATE_COLLAB");
   const shareUrl = isProjectShareable
     ? (typeof window !== "undefined" ? window.location.origin : "") + `/project/${selectedProject!.slug}`
     : profileUrl;
@@ -330,18 +375,17 @@ export default function DashboardClient({
     <ProjectRequests ownedProjects={ownedState} recentRequests={recentRequestsState} onAction={refreshData} />
   );
 
-  function recalcStreak(logs: CheckIn[]) {
-    const { currentStreak: s } = calcStreaks(logs.map((c) => c.date));
-    setCurrentStreak(s);
-  }
-
   async function handleAddLog() {
     if (timerRunning) stopTimer();
     setLogLoading(true);
     const res = await fetch("/api/checkin", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ minutes: newMinutes ? parseInt(newMinutes) : 0, note: newNote }),
+      body: JSON.stringify({
+        minutes: newMinutes ? parseInt(newMinutes) : 0,
+        note: newNote,
+        checklistId: selectedProjectId || null,
+      }),
     });
     if (res.ok) {
       const newLog: CheckIn = await res.json();
@@ -399,7 +443,6 @@ export default function DashboardClient({
     const el = document.querySelector(`[data-item-id="${id}"]`);
     if (el) {
       el.scrollIntoView({ behavior: "smooth", block: "center" });
-      // Add a brief highlight effect
       el.classList.add("ring-2", "ring-amber-500", "ring-offset-2", "ring-offset-slate-900", "rounded");
       setTimeout(() => {
         el.classList.remove("ring-2", "ring-amber-500", "ring-offset-2", "ring-offset-slate-900", "rounded");
@@ -407,63 +450,74 @@ export default function DashboardClient({
     }
   }
 
-  // Shared blocks
-  const streakBadge = (
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
-      <div className="flex items-center gap-3">
-        <span className="text-3xl">🔥</span>
-        <div>
-          <p className="text-2xl font-bold text-amber-400">{currentStreak}<span className="text-sm font-normal text-slate-400 ml-1">day streak</span></p>
-          <p className="text-xs text-slate-500">{streaks.longestStreak}d longest · {streaks.totalDays} days total</p>
-        </div>
-      </div>
-      {hasLoggedToday && <div className="mt-2 text-xs text-emerald-400 font-medium">✓ Logged today</div>}
-    </div>
-  );
+  // Deadline stat card
+  const deadlineStatCard = selectedProject?.deadline ? (() => {
+    const daysLeft = Math.ceil((new Date(selectedProject.deadline).getTime() - Date.now()) / 86400000);
+    return (
+      <StatCard
+        label={daysLeft < 0 ? "overdue" : "project deadline"}
+        value={`${Math.abs(daysLeft)}d`}
+        icon="🔥"
+        highlight={daysLeft <= 7 && daysLeft >= 0}
+        danger={daysLeft < 0}
+      />
+    );
+  })() : <StatCard label="Days logged" value={`${streaks.totalDays}`} icon="📅" />;
 
-  // Always-visible log form (no "+ Add session" toggle)
+  const allSessionProjects = [...ownedState, ...participatingState];
+
+  // Compact sessions-today form (two-column: notes | timer, then project+min+log)
   const logSection = (
-    <section className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+    <section className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
       <h2 className="font-semibold text-slate-200 text-sm mb-3">Sessions today</h2>
 
-      {/* Always-visible add form */}
-      <div className="bg-slate-800 rounded-xl p-4 mb-3 space-y-3">
-        {/* Notes first */}
-        <textarea value={newNote} onChange={(e) => setNewNote(e.target.value)} rows={2}
-          placeholder="What did you study? (optional)"
-          className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:border-amber-500 resize-none" />
-
-        {/* Timer row */}
-        <div className="flex items-center gap-2">
-          {timerRunning ? (
-            <button onClick={stopTimer} className="px-3 py-1.5 bg-red-500/20 border border-red-500/40 text-red-400 text-xs font-semibold rounded-lg hover:bg-red-500/30 transition-colors">
-              ⏹ Stop
-            </button>
-          ) : (
-            <button onClick={startTimer} className="px-3 py-1.5 bg-slate-700 border border-slate-600 text-slate-300 text-xs font-semibold rounded-lg hover:bg-slate-600 transition-colors">
-              ▶ Timer
-            </button>
-          )}
-          {timerElapsed > 0 && (
-            <>
-              <span className={`text-sm font-mono font-bold ${timerRunning ? "text-amber-400" : "text-slate-300"}`}>{fmtElapsed(timerElapsed)}</span>
-              {!timerRunning && <button onClick={resetTimer} className="text-xs text-slate-600 hover:text-slate-400">✕</button>}
-            </>
-          )}
+      <div className="bg-slate-800 rounded-xl p-3 mb-3 space-y-2">
+        {/* Row 1: notes textarea | timer */}
+        <div className="grid grid-cols-[1fr_auto] gap-3">
+          <textarea value={newNote} onChange={(e) => setNewNote(e.target.value)} rows={2}
+            placeholder="What did you study? (optional)"
+            className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:border-amber-500 resize-none" />
+          <div className="flex flex-col items-center justify-center gap-1 min-w-[72px]">
+            {timerRunning ? (
+              <button onClick={stopTimer} className="w-full px-2 py-1.5 bg-red-500/20 border border-red-500/40 text-red-400 text-xs font-semibold rounded-lg hover:bg-red-500/30 transition-colors">
+                ⏹ Stop
+              </button>
+            ) : (
+              <button onClick={startTimer} className="w-full px-2 py-1.5 bg-slate-700 border border-slate-600 text-slate-300 text-xs font-semibold rounded-lg hover:bg-slate-600 transition-colors">
+                ▶ Start
+              </button>
+            )}
+            {timerElapsed > 0 && (
+              <span className={`text-sm font-mono font-bold tabular-nums ${timerRunning ? "text-amber-400" : "text-slate-300"}`}>
+                {fmtElapsed(timerElapsed)}
+              </span>
+            )}
+            {timerElapsed > 0 && !timerRunning && (
+              <button onClick={resetTimer} className="text-[10px] text-slate-600 hover:text-slate-400">✕ reset</button>
+            )}
+          </div>
         </div>
 
-        {/* Optional minutes (below notes) */}
+        {/* Row 2: project picker + minutes + log button */}
         <div className="flex items-center gap-2">
+          <select
+            value={selectedProjectId || ""}
+            onChange={(e) => setSelectedProjectId(e.target.value || null)}
+            className="flex-1 bg-slate-700 border border-slate-600 rounded-lg px-2 py-1.5 text-sm text-slate-300 focus:outline-none focus:border-amber-500 min-w-0"
+          >
+            <option value="">No project</option>
+            {allSessionProjects.map(cl => (
+              <option key={cl.id} value={cl.id}>{cl.name}</option>
+            ))}
+          </select>
           <input type="number" min={0} max={600} value={newMinutes} onChange={(e) => setNewMinutes(e.target.value)}
-            placeholder="0"
-            className="w-20 bg-slate-700 border border-slate-600 rounded-lg px-2 py-1.5 text-slate-100 text-sm focus:outline-none focus:border-amber-500 placeholder-slate-600" />
-          <span className="text-slate-500 text-xs">min <span className="text-slate-600">(optional)</span></span>
+            placeholder="min"
+            className="w-16 bg-slate-700 border border-slate-600 rounded-lg px-2 py-1.5 text-slate-100 text-sm focus:outline-none focus:border-amber-500 placeholder-slate-600" />
+          <button onClick={handleAddLog} disabled={logLoading}
+            className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-bold rounded-lg text-sm shrink-0">
+            {logLoading ? "…" : "Log"}
+          </button>
         </div>
-
-        <button onClick={handleAddLog} disabled={logLoading}
-          className="w-full py-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-bold rounded-xl text-sm">
-          {logLoading ? "Saving..." : "Log session"}
-        </button>
       </div>
 
       {todayLogs.length === 0 ? (
@@ -479,6 +533,19 @@ export default function DashboardClient({
         <Link href="/logs" className="text-xs text-slate-500 hover:text-amber-400 transition-colors">See all logs →</Link>
       </div>
     </section>
+  );
+
+  const streakBadge = (
+    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+      <div className="flex items-center gap-3">
+        <span className="text-3xl">🔥</span>
+        <div>
+          <p className="text-2xl font-bold text-amber-400">{currentStreak}<span className="text-sm font-normal text-slate-400 ml-1">day streak</span></p>
+          <p className="text-xs text-slate-500">{streaks.longestStreak}d longest · {streaks.totalDays} days total</p>
+        </div>
+      </div>
+      {hasLoggedToday && <div className="mt-2 text-xs text-emerald-400 font-medium">✓ Logged today</div>}
+    </div>
   );
 
   const reviewedTodayBlock = todayReviewed.length > 0 ? (
@@ -514,14 +581,16 @@ export default function DashboardClient({
   );
 
   return (
-    <div className="min-h-screen">
-      <header className="border-b border-slate-800 px-6 py-4 flex items-center justify-between sticky top-0 z-40 bg-slate-950/95 backdrop-blur">
-        <Link href="/" className="text-xl font-bold text-amber-400">Streakboard</Link>
-        <div className="flex items-center gap-3">
-          {user.isAdmin && <Link href="/admin" className="text-sm text-amber-500 hover:text-amber-400 font-medium">Admin</Link>}
-          <Link href="/discover" className="text-sm text-slate-400 hover:text-slate-200">Explore</Link>
-          <Link href="/settings" className="text-sm text-slate-400 hover:text-slate-200">Settings</Link>
-          <button onClick={() => signOut({ callbackUrl: "/" })} className="text-sm text-slate-500 hover:text-slate-300">Sign out</button>
+    <div className="min-h-screen bg-slate-950 text-slate-200 animate-fadeIn">
+      <header className="border-b border-slate-800/60 px-6 py-4 flex items-center justify-between sticky top-0 z-40 bg-slate-950/80 backdrop-blur-md transition-all duration-200">
+        <Link href="/dashboard" className="text-xl font-bold text-amber-500 hover:text-amber-400 transition-colors tracking-tight">Streakboard</Link>
+        <div className="flex items-center gap-5">
+          {user.isAdmin && <Link href="/admin" className="text-sm text-amber-500 hover:text-amber-400 font-medium transition-colors">Admin</Link>}
+          <Link href="/discover" className="text-sm text-slate-400 hover:text-white transition-colors">Explore</Link>
+          <Link href="/logs" className="text-sm text-slate-400 hover:text-white transition-colors">Log</Link>
+          <Link href={`/u/${username}`} target="_blank" className="text-sm text-slate-400 hover:text-white transition-colors">Profile</Link>
+          <Link href="/settings" className="text-sm text-slate-400 hover:text-white transition-colors">Settings</Link>
+          <button onClick={() => signOut({ callbackUrl: "/" })} className="text-sm text-slate-500 hover:text-red-400 transition-colors active:scale-95">Sign out</button>
         </div>
       </header>
 
@@ -540,6 +609,7 @@ export default function DashboardClient({
             <ChecklistSection
               owned={ownedState}
               participating={participatingState}
+              archived={archivedChecklists}
               userId={userId}
               onExpandChange={(id) => setExpandedProjectId(id)}
               onOwnedChange={setOwnedState}
@@ -548,7 +618,8 @@ export default function DashboardClient({
             />
             <ProjectProgress projects={allProjects} expandedId={expandedProjectId}
               onSelect={(id) => setExpandedProjectId(expandedProjectId === id ? null : id)}
-              onSectionClick={handleSectionClick} />
+              onSectionClick={handleSectionClick}
+              onCountdownClick={(id) => { setExpandedProjectId(id); setMobileTab("projects"); }} />
             {leaderboardBlock}
             {projectRequestsBlock}
             {shareCard}
@@ -565,7 +636,7 @@ export default function DashboardClient({
             <div className="grid grid-cols-3 gap-2">
               <StatCard label="Streak" value={`${currentStreak}d`} icon="🔥" highlight />
               <StatCard label="Longest" value={`${streaks.longestStreak}d`} icon="🏆" />
-              <StatCard label="Total" value={`${streaks.totalDays}`} icon="📅" />
+              {deadlineStatCard}
             </div>
             {logSection}
             {reviewedTodayBlock}
@@ -574,7 +645,7 @@ export default function DashboardClient({
         {mobileTab === "calendar" && (
           <>
             {streakBadge}
-            <MiniCalendar checkIns={allCheckIns} reviewsByDate={reviewsByDate} />
+            <MiniCalendar checkIns={allCheckIns} reviewsByDate={reviewsByDate} defaultDate={todayKey} />
           </>
         )}
       </div>
@@ -582,7 +653,7 @@ export default function DashboardClient({
       <div className="hidden lg:grid max-w-[1400px] mx-auto px-4 py-6 grid-cols-[280px_1fr_280px] gap-6 items-start min-h-[calc(100vh-73px)]">
         <aside className="space-y-4 sticky top-[73px] max-h-[calc(100vh-90px)] overflow-y-auto pb-4 pr-1 scrollbar-hide">
           {streakBadge}
-          <MiniCalendar checkIns={allCheckIns} reviewsByDate={reviewsByDate} />
+          <MiniCalendar checkIns={allCheckIns} reviewsByDate={reviewsByDate} defaultDate={todayKey} />
           {reviewedTodayBlock}
           {todayLogs.length > 0 && (
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
@@ -595,6 +666,7 @@ export default function DashboardClient({
                   <div key={log.id} className="text-xs">
                     <span className="text-slate-300 font-medium">{log.minutes > 0 ? `${log.minutes}min` : "—"}</span>
                     <span className="text-slate-600 ml-1">{formatLogTime(log.createdAt)}</span>
+                    {log.checklistName && <span className="ml-1 text-slate-500">· {log.checklistName}</span>}
                     {log.note && <p className="italic text-slate-500 mt-0.5">"{log.note}"</p>}
                   </div>
                 ))}
@@ -613,12 +685,13 @@ export default function DashboardClient({
           <div className="grid grid-cols-3 gap-3">
             <StatCard label="Current streak" value={`${currentStreak}d`} icon="🔥" highlight />
             <StatCard label="Longest streak" value={`${streaks.longestStreak}d`} icon="🏆" />
-            <StatCard label="Days logged" value={`${streaks.totalDays}`} icon="📅" />
+            {deadlineStatCard}
           </div>
           {logSection}
           <ChecklistSection
             owned={ownedState}
             participating={participatingState}
+            archived={archivedChecklists}
             userId={userId}
             onExpandChange={(id) => setExpandedProjectId(id)}
             onOwnedChange={setOwnedState}
@@ -630,22 +703,13 @@ export default function DashboardClient({
         <aside className="space-y-4 sticky top-[73px] max-h-[calc(100vh-90px)] overflow-y-auto pb-4 pr-1 scrollbar-hide">
           <ProjectProgress projects={allProjects} expandedId={expandedProjectId}
             onSelect={(id) => setExpandedProjectId(expandedProjectId === id ? null : id)}
-            onSectionClick={handleSectionClick} />
+            onSectionClick={handleSectionClick}
+            onCountdownClick={(id) => setExpandedProjectId(id)} />
           {leaderboardBlock}
           {projectRequestsBlock}
           {shareCard}
         </aside>
       </div>
-    </div>
-  );
-}
-
-function StatCard({ label, value, icon, highlight }: { label: string; value: string; icon: string; highlight?: boolean }) {
-  return (
-    <div className={`rounded-xl p-4 text-center ${highlight ? "bg-amber-500/10 border border-amber-500/30" : "bg-slate-900 border border-slate-800"}`}>
-      <div className="text-xl mb-1">{icon}</div>
-      <div className={`text-xl font-bold ${highlight ? "text-amber-400" : "text-slate-100"}`}>{value}</div>
-      <div className="text-xs text-slate-500 mt-0.5">{label}</div>
     </div>
   );
 }

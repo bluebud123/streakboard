@@ -10,6 +10,7 @@ export default async function LogsPage() {
 
   const logs = await prisma.checkIn.findMany({
     where: { userId },
+    include: { checklist: { select: { name: true } } },
     orderBy: [{ date: "desc" }, { createdAt: "desc" }],
   });
 
@@ -20,6 +21,8 @@ export default async function LogsPage() {
     note: l.note,
     studyTime: (l as { studyTime?: string | null }).studyTime ?? null,
     createdAt: l.createdAt.toISOString(),
+    checklistId: l.checklistId ?? null,
+    checklistName: (l as any).checklist?.name ?? null,
   }));
 
   return <LogsClient initialLogs={serialized} />;
