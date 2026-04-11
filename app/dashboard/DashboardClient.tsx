@@ -793,6 +793,7 @@ export default function DashboardClient({
             archived={archivedChecklists}
             userId={userId}
             forcedExpandId={expandedProjectId}
+            scrollTarget={scrollTarget}
             onExpandChange={(id) => setExpandedProjectId(id)}
             onOwnedChange={setOwnedState}
             onParticipatingChange={setParticipatingState}

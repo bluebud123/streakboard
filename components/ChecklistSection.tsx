@@ -397,7 +397,7 @@ function ItemNode({
           {canEdit && !isEditing && (
             <button
               onClick={() => onEditStart(item.id, item.text)}
-              className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-amber-400 text-xs transition-all p-1"
+              className="opacity-100 lg:opacity-0 lg:group-hover:opacity-100 text-slate-600 hover:text-amber-400 text-xs transition-all p-1"
               title="Edit section"
             >✎</button>
           )}
@@ -405,7 +405,7 @@ function ItemNode({
           {canEdit && (
             <button
               onClick={() => onDelete(checklistId, item.id)}
-              className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 text-xs transition-all p-1"
+              className="opacity-100 lg:opacity-0 lg:group-hover:opacity-100 text-slate-600 hover:text-red-400 text-xs transition-all p-1"
             >✕</button>
           )}
         </div>
@@ -554,7 +554,7 @@ function ItemNode({
         {canEdit && !isEditing && (
           <button
             onClick={() => onEditStart(item.id, item.text)}
-            className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-amber-400 text-xs transition-all p-1"
+            className="opacity-100 lg:opacity-0 lg:group-hover:opacity-100 text-slate-600 hover:text-amber-400 text-xs transition-all p-1"
             title="Rename"
           >✎</button>
         )}
@@ -562,7 +562,7 @@ function ItemNode({
         {canEdit && (
           <button
             onClick={() => onDelete(checklistId, item.id)}
-            className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 text-xs transition-all p-1"
+            className="opacity-100 lg:opacity-0 lg:group-hover:opacity-100 text-slate-600 hover:text-red-400 text-xs transition-all p-1"
           >✕</button>
         )}
       </div>
@@ -715,7 +715,7 @@ export default function ChecklistSection({
 }: Props) {
   const containerRef = useRef<HTMLElement>(null);
   const [owned, setOwned] = useState(initialOwned);
-  const [participating] = useState(initialParticipating);
+  const [participating, setParticipating] = useState(initialParticipating);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [newMode, setNewMode] = useState<"none" | "blank" | "template" | "upload">("none");
   const [newName, setNewName] = useState("");
@@ -779,28 +779,26 @@ export default function ChecklistSection({
   useEffect(() => {
     if (!scrollTarget) return;
     const sectionId = scrollTarget.split(":")[0];
-    // Double rAF: first waits for React DOM commit, second waits for layout paint
-    const r1 = requestAnimationFrame(() => {
-      const r2 = requestAnimationFrame(() => {
-        const root = containerRef.current;
-        if (!root) return;
-        const el = root.querySelector(`[data-item-id="${sectionId}"]`) as HTMLElement | null;
-        if (el) {
-          el.style.scrollMarginTop = "90px";
-          el.scrollIntoView({ behavior: "smooth", block: "start" });
-          el.style.outline = "2px solid #f59e0b";
-          el.style.outlineOffset = "3px";
-          el.style.borderRadius = "6px";
-          setTimeout(() => {
-            el.style.outline = "";
-            el.style.outlineOffset = "";
-            el.style.borderRadius = "";
-          }, 2500);
-        }
-      });
-      return () => cancelAnimationFrame(r2);
-    });
-    return () => cancelAnimationFrame(r1);
+    // setTimeout(350): gives React time to commit setExpanded + re-render tree items into DOM
+    // containerRef scopes the search to THIS instance, avoiding the hidden duplicate panel
+    const timer = setTimeout(() => {
+      const root = containerRef.current;
+      if (!root) return;
+      const el = root.querySelector(`[data-item-id="${sectionId}"]`) as HTMLElement | null;
+      if (el) {
+        el.style.scrollMarginTop = "90px";
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+        el.style.outline = "2px solid #f59e0b";
+        el.style.outlineOffset = "3px";
+        el.style.borderRadius = "6px";
+        setTimeout(() => {
+          el.style.outline = "";
+          el.style.outlineOffset = "";
+          el.style.borderRadius = "";
+        }, 2500);
+      }
+    }, 350);
+    return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scrollTarget]);
 
@@ -997,9 +995,10 @@ export default function ChecklistSection({
           children: it.children ? clearProgress(it.children) : [],
         }));
       }
-      setOwned((prev) => prev.map((cl) =>
-        cl.id === checklistId ? { ...cl, items: clearProgress(cl.items) } : cl
-      ));
+      const applyReset = (list: ChecklistData[]) =>
+        list.map((cl) => cl.id === checklistId ? { ...cl, items: clearProgress(cl.items) } : cl);
+      setOwned((prev) => applyReset(prev));
+      setParticipating((prev) => applyReset(prev));
       toast.success("Progress reset");
     } else {
       toast.error("Failed to reset progress");
