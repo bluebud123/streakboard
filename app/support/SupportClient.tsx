@@ -285,13 +285,33 @@ export default function SupportClient({ isSignedIn, userEmail, donationUrls, fee
                   "Send feedback →"
                 )}
               </button>
-              <a
-                href={mailtoHref}
+              <button
+                type="button"
+                onClick={async (e) => {
+                  e.preventDefault();
+                  // Always copy the address to clipboard first so the user has
+                  // it even if no mail client opens. This is the part that
+                  // actually works reliably on desktop browsers.
+                  try {
+                    await navigator.clipboard.writeText(feedbackTo);
+                    toast.success(`Copied ${feedbackTo} to clipboard — paste it into Gmail / your mail app.`);
+                  } catch {
+                    toast.info(`Email us at ${feedbackTo}`);
+                  }
+                  // Also try to open the OS mail handler in a new tab. If
+                  // nothing is registered (common on Windows) the browser
+                  // silently ignores it and the toast above is the fallback.
+                  const win = window.open(mailtoHref, "_blank");
+                  // Some browsers return null when nothing handles mailto:
+                  if (!win) {
+                    // Already handled by the toast above — nothing else to do.
+                  }
+                }}
                 className="sm:w-auto py-2.5 px-4 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 font-medium rounded-lg text-center text-sm transition-colors"
-                title="Open your email client instead"
+                title={`Copy ${feedbackTo} and try to open your mail app`}
               >
-                ✉ Email directly
-              </a>
+                ✉ Copy email address
+              </button>
             </div>
           </form>
         )}
