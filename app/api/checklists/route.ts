@@ -534,6 +534,30 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ ok: true });
   }
 
+  // ── leaveProject (participant self-remove) ────────────────────────────────
+  if (action === "leaveProject") {
+    const { checklistId } = body;
+    const cl = await prisma.checklist.findUnique({ where: { id: checklistId } });
+    if (!cl) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    if (cl.userId === userId) {
+      return NextResponse.json({ error: "Owners cannot leave — delete or archive instead" }, { status: 400 });
+    }
+    // Collect this user's checkboxes + review dates on this project so we can
+    // clean them up at the same time — leaving should be a clean exit.
+    const items = await prisma.checklistItem.findMany({
+      where: { checklistId },
+      select: { id: true },
+    });
+    const itemIds = items.map((i) => i.id);
+    await prisma.$transaction([
+      prisma.checklistParticipant.deleteMany({ where: { checklistId, userId } }),
+      prisma.checklistProgress.deleteMany({ where: { userId, itemId: { in: itemIds } } }),
+      prisma.checklistRevision.deleteMany({ where: { userId, itemId: { in: itemIds } } }),
+      prisma.checklistPersonalOrder.deleteMany({ where: { userId, itemId: { in: itemIds } } }),
+    ]);
+    return NextResponse.json({ ok: true });
+  }
+
   // ── handleProjectRequest ──────────────────────────────────────────────────
   if (action === "handleProjectRequest") {
     const { requestId, status, message } = body;

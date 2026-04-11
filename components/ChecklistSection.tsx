@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import ChecklistImport from "./ChecklistImport";
 import type { TemplateMetadata } from "@/app/api/templates/route";
@@ -614,16 +614,35 @@ interface TemplatePanelProps {
   templateError: string;
   previewId: string | null;
   usingTemplate: string | null;
+  alreadyHaveIds: Set<string>; // template ids already in owned/participating
   onClose: () => void;
   onPreview: (id: string | null) => void;
   onUse: (tmpl: TemplateMetadata) => void;
 }
 
-function TemplatePanel({ templates, templateError, previewId, usingTemplate, onClose, onPreview, onUse }: TemplatePanelProps) {
+function Spinner({ className = "" }: { className?: string }) {
+  return (
+    <svg className={`animate-spin ${className}`} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.25" />
+      <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function TemplatePanel({ templates, templateError, previewId, usingTemplate, alreadyHaveIds, onClose, onPreview, onUse }: TemplatePanelProps) {
   const [tab, setTab] = useState<"presets" | "community">("presets");
+  const importing = templates.find((t) => t.id === usingTemplate);
 
   return (
-    <div className="mb-4 bg-slate-800/80 border border-slate-700 rounded-2xl overflow-hidden animate-fadeIn">
+    <div className="mb-4 bg-slate-800/80 border border-slate-700 rounded-2xl overflow-hidden animate-fadeIn relative">
+      {/* Import overlay */}
+      {importing && (
+        <div className="absolute inset-0 z-20 bg-slate-950/70 backdrop-blur-sm flex flex-col items-center justify-center gap-3 rounded-2xl">
+          <Spinner className="w-8 h-8 text-amber-400" />
+          <p className="text-sm font-semibold text-slate-200">Importing {importing.title}…</p>
+          <p className="text-xs text-slate-400">This may take a few seconds.</p>
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-700 bg-slate-800">
         <div className="flex items-center gap-1">
@@ -667,10 +686,16 @@ function TemplatePanel({ templates, templateError, previewId, usingTemplate, onC
               </button>
               {previewId === tmpl.id && <TemplatePreview filename={tmpl.filename} />}
               <div className="flex gap-2 mt-2">
-                <button onClick={() => onUse(tmpl)} disabled={usingTemplate === tmpl.id}
-                  className="px-4 py-1.5 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 text-xs font-semibold rounded-lg transition-colors">
-                  {usingTemplate === tmpl.id ? "Importing…" : "Use this →"}
-                </button>
+                {alreadyHaveIds.has(tmpl.id) ? (
+                  <button disabled className="px-4 py-1.5 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold rounded-lg cursor-default flex items-center gap-1.5">
+                    ✓ Already in your dashboard
+                  </button>
+                ) : (
+                  <button onClick={() => onUse(tmpl)} disabled={usingTemplate !== null}
+                    className="px-4 py-1.5 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5">
+                    {usingTemplate === tmpl.id ? (<><Spinner className="w-3.5 h-3.5" /> Importing…</>) : "Use this →"}
+                  </button>
+                )}
                 <a href={`/templates/${tmpl.filename}`} download className="px-4 py-1.5 bg-slate-600 hover:bg-slate-500 text-slate-300 text-xs font-semibold rounded-lg transition-colors">⬇ .md</a>
               </div>
             </div>
@@ -726,6 +751,21 @@ export default function ChecklistSection({
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [usingTemplate, setUsingTemplate] = useState<string | null>(null);
   const [templateError, setTemplateError] = useState("");
+
+  // Template ids the user already has in their dashboard (so we can dim the preset button).
+  // Right now only Ortho is shared (added as participant); the other presets are user-owned copies
+  // which currently don't carry a template marker, so we match by canonical name + contributor.
+  const alreadyHaveTemplateIds = React.useMemo(() => {
+    const have = new Set<string>();
+    const all = [...owned, ...participating];
+    for (const tmpl of templates) {
+      const matchName = tmpl.title; // import sets checklist.name to the parsed H1
+      if (all.some((cl) => cl.name === matchName || cl.name === `${matchName} (copy)`)) {
+        have.add(tmpl.id);
+      }
+    }
+    return have;
+  }, [owned, participating, templates]);
   const [addingTo, setAddingTo] = useState<{ checklistId: string; parentId: string | null; depth: number } | null>(null);
   const [newItemText, setNewItemText] = useState("");
   const [visModal, setVisModal] = useState<ChecklistData | null>(null);
@@ -1066,7 +1106,8 @@ export default function ChecklistSection({
     }
   }
 
-  // ── Reset my progress ────────────────────────────────────────────────────
+  // ── Reset progress ────────────────────────────────────────────────────────
+
   async function resetProgress(checklistId: string, name: string) {
     if (!confirm(`Reset ALL your progress on "${name}"?\n\nThis will uncheck every item and clear all review dates for your account. This cannot be undone.`)) return;
 
@@ -1104,6 +1145,35 @@ export default function ChecklistSection({
       onOwnedChange?.(ownedSnapshot);
       onParticipatingChange?.(participatingSnapshot);
       toast.error("Failed to reset progress");
+    }
+  }
+
+  // ── Leave project (participant self-remove) ─────────────────────────────
+  async function leaveProject(checklistId: string, name: string) {
+    if (!confirm(`Leave "${name}"?\n\nYour progress, checkboxes and review dates on this project will be removed. You can re-join later.`)) return;
+
+    const snapshot = participating;
+    const next = participating.filter((c) => c.id !== checklistId);
+    setParticipating(next);
+    onParticipatingChange?.(next);
+    if (expanded === checklistId) {
+      setExpanded(null);
+      onExpandChange?.(null);
+    }
+
+    const res = await fetch("/api/checklists", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "leaveProject", checklistId }),
+    });
+    if (res.ok) {
+      toast.success(`Left "${name}"`);
+    } else {
+      // Rollback
+      setParticipating(snapshot);
+      onParticipatingChange?.(snapshot);
+      const data = await res.json().catch(() => ({}));
+      toast.error(data.error || "Failed to leave project");
     }
   }
 
@@ -1259,6 +1329,19 @@ export default function ChecklistSection({
 
   // ── Use template ─────────────────────────────────────────────────────────
   async function useTemplate(tmpl: TemplateMetadata) {
+    // Client-side short-circuit: if the template is already in the dashboard,
+    // just expand and scroll to it instead of re-importing.
+    const existing = [...owned, ...participating].find(
+      (cl) => cl.name === tmpl.title || cl.name === `${tmpl.title} (copy)`
+    );
+    if (existing) {
+      toast("Already in your dashboard — opening it.");
+      setNewMode("none");
+      setExpanded(existing.id);
+      onExpandChange?.(existing.id);
+      return;
+    }
+
     setUsingTemplate(tmpl.id); setTemplateError("");
     try {
       const mdRes = await fetch(`/templates/${tmpl.filename}`);
@@ -1274,9 +1357,43 @@ export default function ChecklistSection({
         toast.error(data.error || "Import failed");
         return;
       }
-      setOwned((prev) => { const next = [normaliseChecklist(data), ...prev]; onOwnedChange?.(next); return next; });
+
+      const imported = normaliseChecklist(data);
+      const isParticipant = imported.userId !== userId;
+      const alreadyJoined = Boolean((data as { alreadyJoined?: boolean }).alreadyJoined);
+
+      if (alreadyJoined) {
+        // Server says caller already had it — make sure local state reflects that
+        // (could be stale). Merge if missing.
+        const inOwned = owned.some((c) => c.id === imported.id);
+        const inPart = participating.some((c) => c.id === imported.id);
+        if (!inOwned && !inPart) {
+          if (isParticipant) {
+            const nextP = [imported, ...participating];
+            setParticipating(nextP);
+            onParticipatingChange?.(nextP);
+          } else {
+            const nextO = [imported, ...owned];
+            setOwned(nextO);
+            onOwnedChange?.(nextO);
+          }
+        }
+        toast("Already in your dashboard — opening it.");
+      } else if (isParticipant) {
+        const nextP = [imported, ...participating];
+        setParticipating(nextP);
+        onParticipatingChange?.(nextP);
+        toast.success("Joined shared template!");
+      } else {
+        const nextO = [imported, ...owned];
+        setOwned(nextO);
+        onOwnedChange?.(nextO);
+        toast.success("Template imported!");
+      }
+
       setNewMode("none");
-      toast.success("Template imported!");
+      setExpanded(imported.id);
+      onExpandChange?.(imported.id);
     } catch {
       setTemplateError("Failed to import template — please try again");
       toast.error("Failed to import template — please try again");
@@ -1453,6 +1570,7 @@ export default function ChecklistSection({
           templateError={templateError}
           previewId={previewId}
           usingTemplate={usingTemplate}
+          alreadyHaveIds={alreadyHaveTemplateIds}
           onClose={() => openNew("template")}
           onPreview={(id) => setPreviewId(id)}
           onUse={useTemplate}
@@ -1619,14 +1737,19 @@ export default function ChecklistSection({
                     >✕ Delete</button>
                   </div>
                 )}
-                {/* Reset for participating (non-owner) projects */}
+                {/* Reset / Leave for participating (non-owner) projects */}
                 {!cl.isOwner && isEditMode && (
-                  <div className="flex items-center gap-2 mt-1.5 ml-6">
+                  <div className="flex items-center gap-2 mt-1.5 ml-6 flex-wrap">
                     <button
                       onClick={() => resetProgress(cl.id, cl.name)}
                       className="text-[10px] text-slate-600 hover:text-sky-400 transition-colors px-1"
                       title="Reset all my progress on this project"
                     >↺ Reset my progress</button>
+                    <button
+                      onClick={() => leaveProject(cl.id, cl.name)}
+                      className="text-[10px] text-slate-600 hover:text-red-400 transition-colors px-1"
+                      title="Leave this shared project"
+                    >🚪 Leave project</button>
                   </div>
                 )}
               </div>

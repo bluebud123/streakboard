@@ -144,11 +144,82 @@ export async function POST(req: Request) {
     let visibility = "PRIVATE";
     const isOrtho = file.name === "orthopaedic-surgery.md";
 
+    // Shared include used for the response
+    const fullInclude = {
+      items: {
+        where: { parentId: null },
+        orderBy: { order: "asc" as const },
+        include: {
+          progress: { where: { userId: session.user.id } },
+          revisions: { where: { userId: session.user.id }, select: { createdAt: true }, orderBy: { createdAt: "desc" as const } },
+          children: {
+            orderBy: { order: "asc" as const },
+            include: {
+              progress: { where: { userId: session.user.id } },
+              revisions: { where: { userId: session.user.id }, select: { createdAt: true }, orderBy: { createdAt: "desc" as const } },
+              children: {
+                orderBy: { order: "asc" as const },
+                include: {
+                  progress: { where: { userId: session.user.id } },
+                  revisions: { where: { userId: session.user.id }, select: { createdAt: true }, orderBy: { createdAt: "desc" as const } },
+                },
+              },
+            },
+          },
+        },
+      },
+      user: { select: { id: true, username: true, name: true, isPublic: true } },
+      participants: { include: { user: { select: { id: true, username: true, name: true } } } },
+    };
+
+    // ── Special case: Orthopaedic Surgery Fellowship Exam ─────────────────────
+    // Instead of creating a brand new checklist on every import, use a single
+    // canonical @blue-owned checklist and add the caller as a participant.
+    // This lets all users share one leaderboard and prevents duplicates.
     if (isOrtho) {
-      // Find user @blue (fallback to current if not found)
       const blue = await prisma.user.findUnique({ where: { username: "blue" } });
-      if (blue) ownerId = blue.id;
-      visibility = "PUBLIC_EDIT";
+      if (blue) {
+        // Look for an existing canonical Ortho checklist owned by @blue.
+        const canonical = await prisma.checklist.findFirst({
+          where: { userId: blue.id, name: parsed.name },
+          orderBy: { createdAt: "asc" },
+        });
+
+        if (canonical) {
+          // Enforce PUBLIC_EDIT so leaderboard can list all participants.
+          if (canonical.visibility !== "PUBLIC_EDIT") {
+            await prisma.checklist.update({
+              where: { id: canonical.id },
+              data: { visibility: "PUBLIC_EDIT" },
+            });
+          }
+
+          // Check if the caller is already a participant (or owner).
+          const isOwner = canonical.userId === session.user.id;
+          const existingParticipant = await prisma.checklistParticipant.findUnique({
+            where: { checklistId_userId: { checklistId: canonical.id, userId: session.user.id } },
+          });
+
+          let alreadyJoined = false;
+          if (isOwner || existingParticipant) {
+            alreadyJoined = true;
+          } else {
+            await prisma.checklistParticipant.create({
+              data: { checklistId: canonical.id, userId: session.user.id },
+            });
+          }
+
+          const full = await prisma.checklist.findUnique({
+            where: { id: canonical.id },
+            include: fullInclude,
+          });
+          return NextResponse.json({ ...full, alreadyJoined }, { status: 200 });
+        }
+
+        // No canonical yet — create one single time, owned by @blue.
+        ownerId = blue.id;
+        visibility = "PUBLIC_EDIT";
+      }
     }
 
     const checklist = await prisma.checklist.create({
@@ -168,25 +239,7 @@ export async function POST(req: Request) {
     // Return the full checklist with root items + children
     const full = await prisma.checklist.findUnique({
       where: { id: checklist.id },
-      include: {
-        items: {
-          where: { parentId: null },
-          orderBy: { order: "asc" },
-          include: {
-            progress: { where: { userId: session.user.id } },
-            children: {
-              orderBy: { order: "asc" },
-              include: {
-                progress: { where: { userId: session.user.id } },
-                children: {
-                  orderBy: { order: "asc" },
-                  include: { progress: { where: { userId: session.user.id } } },
-                },
-              },
-            },
-          },
-        },
-      },
+      include: fullInclude,
     });
 
     return NextResponse.json(full, { status: 201 });

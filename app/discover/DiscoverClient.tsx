@@ -170,9 +170,20 @@ export default function DiscoverClient({ card, isLoggedIn }: { card: CardData; i
               </button>
               <button
                 onClick={confirmAction}
-                className="flex-1 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-semibold rounded-lg transition-colors"
+                disabled={loading}
+                className="flex-1 py-1.5 bg-amber-500 hover:bg-amber-400 disabled:opacity-60 disabled:cursor-not-allowed text-slate-950 text-xs font-semibold rounded-lg transition-colors flex items-center justify-center gap-1.5"
               >
-                Yes, {isTemplate ? "copy it" : "join"} →
+                {loading ? (
+                  <>
+                    <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.25" />
+                      <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                    </svg>
+                    {isTemplate ? "Copying…" : "Joining…"}
+                  </>
+                ) : (
+                  <>Yes, {isTemplate ? "copy it" : "join"} →</>
+                )}
               </button>
             </div>
           </div>
@@ -180,9 +191,19 @@ export default function DiscoverClient({ card, isLoggedIn }: { card: CardData; i
           <button
             onClick={handleActionClick}
             disabled={loading}
-            className="w-full py-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 text-xs font-semibold rounded-lg transition-colors"
+            className="w-full py-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 text-xs font-semibold rounded-lg transition-colors flex items-center justify-center gap-1.5"
           >
-            {loading ? (isTemplate ? "Copying…" : "Joining…") : `${actionLabel} →`}
+            {loading ? (
+              <>
+                <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.25" />
+                  <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                </svg>
+                {isTemplate ? "Copying…" : "Joining…"}
+              </>
+            ) : (
+              <>{actionLabel} →</>
+            )}
           </button>
         )}
       </div>
