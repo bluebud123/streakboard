@@ -38,11 +38,13 @@ export default function AppHeader() {
             {navLink("/dashboard", "Dashboard")}
             {navLink("/logs", "Log")}
             {navLink("/discover", "Explore")}
+            {navLink("/support", "💛 Support")}
             {navLink("/settings", "Settings")}
           </>
         ) : (
           <>
             {navLink("/discover", "Explore")}
+            {navLink("/support", "💛 Support")}
             <Link
               href="/login"
               className="text-sm text-slate-400 hover:text-white transition-colors"
