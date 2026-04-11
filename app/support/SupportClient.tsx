@@ -6,7 +6,12 @@ import { toast } from "sonner";
 interface Props {
   isSignedIn: boolean;
   userEmail: string;
-  donationUrl: string;
+  donationUrls: {
+    coffee: string;
+    pizza: string;
+    taco: string;
+    custom: string;
+  };
   feedbackTo: string;
 }
 
@@ -17,16 +22,14 @@ const CATEGORIES = [
   { value: "other", label: "💬 Other / just saying hi" },
 ];
 
-// Preset donation amounts (display only — the actual amount is picked on the
-// Stripe Payment Link page, which supports "Let customers choose what to pay").
-const PRESETS = [
-  { label: "☕ Coffee", amount: 3 },
-  { label: "🍕 Slice", amount: 5 },
-  { label: "🌮 Lunch", amount: 10 },
-  { label: "💝 Generous", amount: 25 },
-];
-
-export default function SupportClient({ isSignedIn, userEmail, donationUrl, feedbackTo }: Props) {
+export default function SupportClient({ isSignedIn, userEmail, donationUrls, feedbackTo }: Props) {
+  // Each preset links to its own dedicated Stripe Payment Link (fixed price),
+  // except the last which opens a "let customer choose" link.
+  const presets = [
+    { emoji: "☕", label: "Coffee", amount: "$3", url: donationUrls.coffee },
+    { emoji: "🍕", label: "Pizza", amount: "$5", url: donationUrls.pizza },
+    { emoji: "🌮", label: "Taco", amount: "$10", url: donationUrls.taco },
+  ];
   const [category, setCategory] = useState("feature");
   const [message, setMessage] = useState("");
   const [contact, setContact] = useState(userEmail);
@@ -70,7 +73,11 @@ export default function SupportClient({ isSignedIn, userEmail, donationUrl, feed
     }
   }
 
-  const hasDonationLink = donationUrl.length > 0;
+  const hasDonationLink =
+    donationUrls.coffee.length > 0 ||
+    donationUrls.pizza.length > 0 ||
+    donationUrls.taco.length > 0 ||
+    donationUrls.custom.length > 0;
   const mailtoHref = `mailto:${feedbackTo}?subject=${encodeURIComponent("[Streakboard] " + category)}&body=${encodeURIComponent(message)}`;
 
   return (
@@ -101,30 +108,46 @@ export default function SupportClient({ isSignedIn, userEmail, donationUrl, feed
 
         {hasDonationLink ? (
           <>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {PRESETS.map((p) => (
-                <a
-                  key={p.amount}
-                  href={`${donationUrl}${donationUrl.includes("?") ? "&" : "?"}prefilled_amount=${p.amount * 100}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="py-3 px-2 bg-slate-900/60 hover:bg-amber-500/20 border border-slate-700 hover:border-amber-500/50 rounded-xl text-center transition-all group"
-                >
-                  <div className="text-xl mb-1">{p.label.split(" ")[0]}</div>
-                  <div className="text-xs font-semibold text-slate-300 group-hover:text-amber-400">
-                    ${p.amount}
+            <div className="grid grid-cols-3 gap-2">
+              {presets.map((p) =>
+                p.url ? (
+                  <a
+                    key={p.label}
+                    href={p.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="py-4 px-2 bg-slate-900/60 hover:bg-amber-500/20 border border-slate-700 hover:border-amber-500/50 rounded-xl text-center transition-all group"
+                  >
+                    <div className="text-2xl mb-1">{p.emoji}</div>
+                    <div className="text-xs font-semibold text-slate-200 group-hover:text-amber-400">
+                      {p.label}
+                    </div>
+                    <div className="text-[11px] text-slate-500 group-hover:text-amber-400/80">
+                      {p.amount}
+                    </div>
+                  </a>
+                ) : (
+                  <div
+                    key={p.label}
+                    className="py-4 px-2 bg-slate-900/30 border border-slate-800 rounded-xl text-center opacity-40"
+                    title="Not configured yet"
+                  >
+                    <div className="text-2xl mb-1">{p.emoji}</div>
+                    <div className="text-xs text-slate-500">{p.label}</div>
                   </div>
-                </a>
-              ))}
+                )
+              )}
             </div>
-            <a
-              href={donationUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="block w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-center transition-all hover:scale-[1.01] active:scale-[0.99]"
-            >
-              💛 Donate via Stripe →
-            </a>
+            {donationUrls.custom ? (
+              <a
+                href={donationUrls.custom}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-center transition-all hover:scale-[1.01] active:scale-[0.99]"
+              >
+                💛 Donate a custom amount →
+              </a>
+            ) : null}
             <p className="text-xs text-slate-500 text-center">
               Secure · No account needed · Apple Pay / Google Pay / card
             </p>
