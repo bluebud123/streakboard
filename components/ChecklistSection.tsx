@@ -397,7 +397,7 @@ function ItemNode({
           {canEdit && !isEditing && (
             <button
               onClick={() => onEditStart(item.id, item.text)}
-              className="opacity-100 lg:opacity-0 lg:group-hover:opacity-100 text-slate-600 hover:text-amber-400 text-xs transition-all p-1"
+              className="shrink-0 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 text-amber-400 lg:text-slate-600 hover:text-amber-400 bg-amber-500/10 lg:bg-transparent border border-amber-500/30 lg:border-0 rounded-md text-sm lg:text-xs p-1.5 lg:p-1 min-w-[28px] min-h-[28px] lg:min-w-0 lg:min-h-0 flex items-center justify-center transition-all"
               title="Edit section"
             >✎</button>
           )}
@@ -405,7 +405,8 @@ function ItemNode({
           {canEdit && (
             <button
               onClick={() => onDelete(checklistId, item.id)}
-              className="opacity-100 lg:opacity-0 lg:group-hover:opacity-100 text-slate-600 hover:text-red-400 text-xs transition-all p-1"
+              className="shrink-0 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 text-red-400 lg:text-slate-600 hover:text-red-400 bg-red-500/10 lg:bg-transparent border border-red-500/30 lg:border-0 rounded-md text-sm lg:text-xs p-1.5 lg:p-1 min-w-[28px] min-h-[28px] lg:min-w-0 lg:min-h-0 flex items-center justify-center transition-all"
+              title="Delete section"
             >✕</button>
           )}
         </div>
@@ -554,7 +555,7 @@ function ItemNode({
         {canEdit && !isEditing && (
           <button
             onClick={() => onEditStart(item.id, item.text)}
-            className="opacity-100 lg:opacity-0 lg:group-hover:opacity-100 text-slate-600 hover:text-amber-400 text-xs transition-all p-1"
+            className="shrink-0 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 text-amber-400 lg:text-slate-600 hover:text-amber-400 bg-amber-500/10 lg:bg-transparent border border-amber-500/30 lg:border-0 rounded-md text-sm lg:text-xs p-1.5 lg:p-1 min-w-[28px] min-h-[28px] lg:min-w-0 lg:min-h-0 flex items-center justify-center transition-all"
             title="Rename"
           >✎</button>
         )}
@@ -562,7 +563,8 @@ function ItemNode({
         {canEdit && (
           <button
             onClick={() => onDelete(checklistId, item.id)}
-            className="opacity-100 lg:opacity-0 lg:group-hover:opacity-100 text-slate-600 hover:text-red-400 text-xs transition-all p-1"
+            className="shrink-0 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 text-red-400 lg:text-slate-600 hover:text-red-400 bg-red-500/10 lg:bg-transparent border border-red-500/30 lg:border-0 rounded-md text-sm lg:text-xs p-1.5 lg:p-1 min-w-[28px] min-h-[28px] lg:min-w-0 lg:min-h-0 flex items-center justify-center transition-all"
+            title="Delete task"
           >✕</button>
         )}
       </div>
@@ -804,28 +806,84 @@ export default function ChecklistSection({
   }, [forcedExpandId]);
 
   // Scroll to a specific section/item when right panel section is clicked
-  // (handles the case where the project is already expanded — no forcedExpandId re-trigger)
+  // (handles the case where the project is already expanded — no forcedExpandId re-trigger).
+  // Uses a retry ladder so we don't lose the scroll if the layout is still
+  // being committed when the first attempt fires.
   useEffect(() => {
     if (!scrollTarget) return;
     const sectionId = scrollTarget.split(":")[0];
-    const timer = setTimeout(() => {
-      const root = containerRef.current;
-      if (!root) return;
-      const el = root.querySelector(`[data-item-id="${sectionId}"]`) as HTMLElement | null;
-      if (el) {
-        el.style.scrollMarginTop = "90px";
-        el.scrollIntoView({ behavior: "smooth", block: "start" });
-        el.style.outline = "2px solid #f59e0b";
-        el.style.outlineOffset = "3px";
-        el.style.borderRadius = "6px";
-        setTimeout(() => {
-          el.style.outline = "";
-          el.style.outlineOffset = "";
-          el.style.borderRadius = "";
-        }, 2500);
+
+    // If the target is hidden under a collapsed parent, uncollapse it first.
+    setCollapsedIds((prev) => {
+      if (prev.size === 0) return prev;
+      const next = new Set(prev);
+      let changed = false;
+      // Walk all owned/participating items, find the target and any ancestor sections,
+      // and uncollapse anything that contains it.
+      const allLists = [ownedRef.current, participating];
+      for (const list of allLists) {
+        for (const cl of list) {
+          const path: string[] = [];
+          const findPath = (items: TreeItem[] | undefined): boolean => {
+            if (!items) return false;
+            for (const it of items) {
+              if (it.id === sectionId) return true;
+              path.push(it.id);
+              if (findPath(it.children)) return true;
+              path.pop();
+            }
+            return false;
+          };
+          if (findPath(cl.items)) {
+            for (const ancestorId of path) {
+              if (next.has(ancestorId)) { next.delete(ancestorId); changed = true; }
+            }
+            return changed ? next : prev;
+          }
+        }
       }
-    }, 350);
-    return () => clearTimeout(timer);
+      return prev;
+    });
+
+    let cancelled = false;
+    const attempts = [0, 120, 300, 700, 1200];
+    const timers: ReturnType<typeof setTimeout>[] = [];
+
+    const tryScroll = () => {
+      if (cancelled) return false;
+      const root = containerRef.current;
+      if (!root) return false;
+      const el = root.querySelector(`[data-item-id="${sectionId}"]`) as HTMLElement | null;
+      if (!el || el.offsetHeight === 0) return false;
+      el.style.scrollMarginTop = "90px";
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+      el.style.outline = "2px solid #f59e0b";
+      el.style.outlineOffset = "3px";
+      el.style.borderRadius = "6px";
+      const clearTimer = setTimeout(() => {
+        el.style.outline = "";
+        el.style.outlineOffset = "";
+        el.style.borderRadius = "";
+      }, 2500);
+      timers.push(clearTimer);
+      return true;
+    };
+
+    for (const delay of attempts) {
+      const t = setTimeout(() => {
+        if (cancelled) return;
+        if (tryScroll()) {
+          // success — cancel any later retries
+          for (const tt of timers) clearTimeout(tt);
+        }
+      }, delay);
+      timers.push(t);
+    }
+
+    return () => {
+      cancelled = true;
+      for (const t of timers) clearTimeout(t);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scrollTarget]);
 
@@ -1011,11 +1069,40 @@ export default function ChecklistSection({
   // ── Reset my progress ────────────────────────────────────────────────────
   async function resetProgress(checklistId: string, name: string) {
     if (!confirm(`Reset ALL your progress on "${name}"?\n\nThis will uncheck every item and clear all review dates for your account. This cannot be undone.`)) return;
+
+    // Recursively clear progress + revisions on every item of the matching checklist.
+    const clearItems = (items: TreeItem[]): TreeItem[] =>
+      items.map((it) => ({
+        ...it,
+        progress: [],
+        revisions: [],
+        children: it.children ? clearItems(it.children) : it.children,
+      }));
+    const clearList = (list: ChecklistData[]) =>
+      list.map((cl) => (cl.id === checklistId ? { ...cl, items: clearItems(cl.items) } : cl));
+
+    // Snapshot for rollback
+    const ownedSnapshot = owned;
+    const participatingSnapshot = participating;
+
+    // Optimistic update — compute next state outside the updater so parent
+    // setters aren't invoked during the child render phase.
+    const nextOwned = clearList(owned);
+    const nextParticipating = clearList(participating);
+    setOwned(nextOwned);
+    setParticipating(nextParticipating);
+    onOwnedChange?.(nextOwned);
+    onParticipatingChange?.(nextParticipating);
+
     const res = await fetch(`/api/checklists/${checklistId}/progress`, { method: "DELETE" });
     if (res.ok) {
-      toast.success("Progress reset — reloading…");
-      setTimeout(() => window.location.reload(), 800);
+      toast.success("Progress reset");
     } else {
+      // Rollback
+      setOwned(ownedSnapshot);
+      setParticipating(participatingSnapshot);
+      onOwnedChange?.(ownedSnapshot);
+      onParticipatingChange?.(participatingSnapshot);
       toast.error("Failed to reset progress");
     }
   }

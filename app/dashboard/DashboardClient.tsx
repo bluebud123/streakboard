@@ -467,8 +467,11 @@ export default function DashboardClient({
     if (projectId && expandedProjectId !== projectId) {
       setExpandedProjectId(projectId);
     }
-    // Switch mobile tab to projects so ChecklistSection is rendered
-    setMobileTab("projects");
+    // Only switch mobile tab on mobile viewports — on desktop this would mount
+    // a second ChecklistSection instance and race the scroll effect.
+    if (typeof window !== "undefined" && window.matchMedia("(max-width: 1023px)").matches) {
+      setMobileTab("projects");
+    }
     // Tell ChecklistSection to scroll to this item (uses containerRef internally, no global querySelector)
     setScrollTarget(`${sectionId}:${Date.now()}`);
   }
