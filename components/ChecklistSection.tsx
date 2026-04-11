@@ -529,18 +529,18 @@ function ItemNode({
               title={`Reviewed ${item.revisions.length}×. Unchecking keeps your history; use − to remove the last review entry.`}
             >
               <span className="bg-amber-500/10 px-1.5 py-0.5 rounded-full">+{item.revisions.length}</span>
-              <span className="flex items-center gap-1 overflow-hidden">
+              <span className="hidden lg:flex items-center gap-1 overflow-hidden">
                 {visible.map((d, i) => (
                   <span key={i} className="bg-slate-800/80 px-1.5 py-0.5 rounded border border-slate-700/50">{d}</span>
                 ))}
                 {hasMore && !showAllDates && (
-                  <button 
+                  <button
                     onClick={(e) => { e.stopPropagation(); setShowAllDates(true); }}
                     className="hover:text-amber-400 underline decoration-dotted transition-colors"
                   >...</button>
                 )}
                 {showAllDates && (
-                  <button 
+                  <button
                     onClick={(e) => { e.stopPropagation(); setShowAllDates(false); }}
                     className="hover:text-amber-400 transition-colors"
                   >«</button>
@@ -761,26 +761,53 @@ export default function ChecklistSection({
   const [addPopupOpen, setAddPopupOpen] = useState(false);
   const addPopupRef = useRef<HTMLDivElement>(null);
 
+  // Ref to hold the pending scrollTarget so forcedExpandId effect can access it
+  const pendingScrollTargetRef = useRef<string | null>(null);
+  useEffect(() => { pendingScrollTargetRef.current = scrollTarget ?? null; }, [scrollTarget]);
+
   // Sync forced expand from parent (right panel project click)
   useEffect(() => {
-    if (forcedExpandId && forcedExpandId !== expanded) {
+    if (!forcedExpandId) return;
+    const alreadyExpanded = forcedExpandId === expanded;
+    if (!alreadyExpanded) {
       setExpanded(forcedExpandId);
       onExpandChange?.(forcedExpandId);
-      // Scroll to the project card
-      setTimeout(() => {
-        const el = containerRef.current?.querySelector(`[data-checklist-id="${forcedExpandId}"]`);
-        el?.scrollIntoView({ behavior: "smooth", block: "start" });
-      }, 100);
     }
+    // Scroll to project card first (fast), then to the section item after React re-renders tree
+    setTimeout(() => {
+      const el = containerRef.current?.querySelector(`[data-checklist-id="${forcedExpandId}"]`);
+      el?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 80);
+
+    // Scroll to the specific section — use 600ms to guarantee React has committed the expanded tree
+    setTimeout(() => {
+      const target = pendingScrollTargetRef.current;
+      if (!target) return;
+      const sectionId = target.split(":")[0];
+      const root = containerRef.current;
+      if (!root) return;
+      const sectionEl = root.querySelector(`[data-item-id="${sectionId}"]`) as HTMLElement | null;
+      if (sectionEl) {
+        sectionEl.style.scrollMarginTop = "90px";
+        sectionEl.scrollIntoView({ behavior: "smooth", block: "start" });
+        sectionEl.style.outline = "2px solid #f59e0b";
+        sectionEl.style.outlineOffset = "3px";
+        sectionEl.style.borderRadius = "6px";
+        setTimeout(() => {
+          sectionEl.style.outline = "";
+          sectionEl.style.outlineOffset = "";
+          sectionEl.style.borderRadius = "";
+        }, 2500);
+      }
+    }, 600);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [forcedExpandId]);
 
   // Scroll to a specific section/item when right panel section is clicked
+  // (handles the case where the project is already expanded — no forcedExpandId re-trigger)
   useEffect(() => {
     if (!scrollTarget) return;
     const sectionId = scrollTarget.split(":")[0];
-    // setTimeout(350): gives React time to commit setExpanded + re-render tree items into DOM
-    // containerRef scopes the search to THIS instance, avoiding the hidden duplicate panel
     const timer = setTimeout(() => {
       const root = containerRef.current;
       if (!root) return;
@@ -983,23 +1010,11 @@ export default function ChecklistSection({
 
   // ── Reset my progress ────────────────────────────────────────────────────
   async function resetProgress(checklistId: string, name: string) {
-    if (!confirm(`Reset ALL your progress on "${name}"?\n\nThis will uncheck every item for your account. This cannot be undone.`)) return;
+    if (!confirm(`Reset ALL your progress on "${name}"?\n\nThis will uncheck every item and clear all review dates for your account. This cannot be undone.`)) return;
     const res = await fetch(`/api/checklists/${checklistId}/progress`, { method: "DELETE" });
     if (res.ok) {
-      // Optimistically clear progress AND revisions in local state
-      function clearProgress(items: TreeItem[]): TreeItem[] {
-        return items.map((it) => ({
-          ...it,
-          progress: it.isSection ? it.progress : [{ done: false }],
-          revisions: [],
-          children: it.children ? clearProgress(it.children) : [],
-        }));
-      }
-      const applyReset = (list: ChecklistData[]) =>
-        list.map((cl) => cl.id === checklistId ? { ...cl, items: clearProgress(cl.items) } : cl);
-      setOwned((prev) => applyReset(prev));
-      setParticipating((prev) => applyReset(prev));
-      toast.success("Progress reset");
+      toast.success("Progress reset — reloading…");
+      setTimeout(() => window.location.reload(), 800);
     } else {
       toast.error("Failed to reset progress");
     }
