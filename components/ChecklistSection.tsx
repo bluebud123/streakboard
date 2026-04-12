@@ -1737,8 +1737,9 @@ export default function ChecklistSection({
                     >✕ Delete</button>
                   </div>
                 )}
-                {/* Reset / Leave for participating (non-owner) projects */}
-                {!cl.isOwner && isEditMode && (
+                {/* Reset / Leave for participating (non-owner) projects —
+                    always visible (no edit toggle exists for non-owners) */}
+                {!cl.isOwner && (
                   <div className="flex items-center gap-2 mt-1.5 ml-6 flex-wrap">
                     <button
                       onClick={() => resetProgress(cl.id, cl.name)}
