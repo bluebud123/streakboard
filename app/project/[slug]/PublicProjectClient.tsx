@@ -109,6 +109,7 @@ interface ItemNodeProps {
   parentId: string | null;
   canCollab: boolean;
   canEdit: boolean;
+  canDelete: boolean;
   editMode: boolean;
   multiParticipant: boolean;
   pendingDeletions: Set<string>;
@@ -130,7 +131,7 @@ interface ItemNodeProps {
 }
 
 function ItemNode({
-  item, parentId, canCollab, canEdit, editMode, multiParticipant, pendingDeletions,
+  item, parentId, canCollab, canEdit, canDelete, editMode, multiParticipant, pendingDeletions,
   onToggle, onDelete, onAddChild,
   addingTo, newItemText, onNewItemChange, onAddConfirm, onAddCancel,
   onDragStart, onDragOver, onDrop, onDragEnd, dragId, dragOverId,
@@ -139,7 +140,7 @@ function ItemNode({
   const isDragging = dragId === item.id;
   const isDragOver = dragOverId === item.id && dragId !== item.id;
 
-  const dragProps = editMode && canEdit ? {
+  const dragProps = editMode && canDelete ? {
     draggable: true,
     onDragStart: () => onDragStart(item.id, parentId),
     onDragOver: (e: React.DragEvent) => onDragOver(e, item.id),
@@ -151,7 +152,7 @@ function ItemNode({
     return (
       <div className={`mt-4 first:mt-0 transition-all ${isDragOver ? "ring-2 ring-amber-500 rounded-lg bg-amber-500/5" : ""}`} {...dragProps}>
         <div className={`flex items-center gap-2 mb-1 ${isDragging ? "opacity-40" : ""}`}>
-          {editMode && canEdit && (
+          {editMode && canDelete && (
             <span className="text-slate-600 cursor-grab active:cursor-grabbing text-base select-none">⠿</span>
           )}
           <div className="w-1 h-5 rounded-full bg-amber-500/60 shrink-0" />
@@ -160,7 +161,7 @@ function ItemNode({
         <div className="ml-3 space-y-1 border-l border-slate-800 pl-3">
           {item.children.map((child) => (
             <ItemNode key={child.id} item={child} parentId={item.id}
-              canCollab={canCollab} canEdit={canEdit} editMode={editMode} multiParticipant={multiParticipant} pendingDeletions={pendingDeletions}
+              canCollab={canCollab} canEdit={canEdit} canDelete={canDelete} editMode={editMode} multiParticipant={multiParticipant} pendingDeletions={pendingDeletions}
               onToggle={onToggle} onDelete={onDelete} onAddChild={onAddChild}
               addingTo={addingTo} newItemText={newItemText} onNewItemChange={onNewItemChange} onAddConfirm={onAddConfirm} onAddCancel={onAddCancel}
               onDragStart={onDragStart} onDragOver={onDragOver} onDrop={(tid) => onDrop(tid, item.id)} onDragEnd={onDragEnd}
@@ -189,7 +190,7 @@ function ItemNode({
   return (
     <div className={`${isSubtask ? "ml-4" : ""} transition-all ${isDragOver ? "border-t-2 border-amber-500" : ""}`}>
       <div className={`flex items-center gap-3 group py-0.5 ${isDragging ? "opacity-40" : ""}`} {...dragProps}>
-        {editMode && canEdit && (
+        {editMode && canDelete && (
           <span className="text-slate-600 cursor-grab active:cursor-grabbing text-base select-none shrink-0">⠿</span>
         )}
         {canCollab ? (
@@ -204,7 +205,7 @@ function ItemNode({
         {multiParticipant && !item.isSection && (
           <span className="text-xs text-slate-600 shrink-0">{item.doneCount}/{item.totalParticipants}</span>
         )}
-        {editMode && canEdit && (
+        {editMode && canDelete && (
           isPendingDeletion ? (
             <span className="text-[10px] text-amber-500/70 bg-amber-500/10 px-1.5 py-0.5 rounded-full shrink-0 whitespace-nowrap">⏳ pending</span>
           ) : (
@@ -217,7 +218,7 @@ function ItemNode({
         <div className="ml-7 space-y-0.5 mt-0.5">
           {item.children.map((sub) => (
             <ItemNode key={sub.id} item={sub} parentId={item.id}
-              canCollab={canCollab} canEdit={canEdit} editMode={editMode} multiParticipant={multiParticipant} pendingDeletions={pendingDeletions}
+              canCollab={canCollab} canEdit={canEdit} canDelete={canDelete} editMode={editMode} multiParticipant={multiParticipant} pendingDeletions={pendingDeletions}
               onToggle={onToggle} onDelete={onDelete} onAddChild={onAddChild}
               addingTo={addingTo} newItemText={newItemText} onNewItemChange={onNewItemChange} onAddConfirm={onAddConfirm} onAddCancel={onAddCancel}
               onDragStart={onDragStart} onDragOver={onDragOver} onDrop={(tid) => onDrop(tid, item.id)} onDragEnd={onDragEnd}
@@ -270,6 +271,7 @@ export default function PublicProjectClient({
   const [dragOverId, setDragOverId] = useState<string | null>(null);
 
   const canEdit = isOwner || (visibility === "PUBLIC_EDIT" && joined);
+  const canDelete = isOwner; // only creator can delete/reorder — participants can add/rename
   const canCollab = joined && (visibility === "PUBLIC_COLLAB" || visibility === "PUBLIC_EDIT");
   const multiParticipant = leaderboard.length > 1;
 
@@ -472,7 +474,7 @@ export default function PublicProjectClient({
         <div className="space-y-1">
           {items.map((item) => (
             <ItemNode key={item.id} item={item} parentId={null}
-              canCollab={canCollab} canEdit={canEdit} editMode={editMode} multiParticipant={multiParticipant} pendingDeletions={pendingDeletions}
+              canCollab={canCollab} canEdit={canEdit} canDelete={canDelete} editMode={editMode} multiParticipant={multiParticipant} pendingDeletions={pendingDeletions}
               onToggle={toggleItem} onDelete={deleteItem}
               onAddChild={(parentId, depth) => startAdd(parentId, depth)}
               addingTo={addingTo?.parentId !== null && addingTo?.parentId !== undefined ? { parentId: addingTo.parentId!, depth: addingTo.depth } : null}

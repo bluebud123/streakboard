@@ -297,6 +297,7 @@ interface ItemNodeProps {
   item: TreeItem;
   checklistId: string;
   canEdit: boolean;
+  canDelete: boolean; // only owner — participants can add/rename but not delete/reorder
   canCheck: boolean;
   collapsedIds: Set<string>;
   onToggleCollapse: (id: string) => void;
@@ -326,7 +327,7 @@ interface ItemNodeProps {
 }
 
 function ItemNode({
-  item, checklistId, canEdit, canCheck,
+  item, checklistId, canEdit, canDelete, canCheck,
   collapsedIds, onToggleCollapse,
   editingId, editingText, onEditStart, onEditChange, onEditSave, onEditCancel,
   onCheck, onUncheck, onRemoveRevision, onDelete, onAddChild,
@@ -341,7 +342,7 @@ function ItemNode({
   const isCollapsed = collapsedIds.has(item.id);
 
   const commonProps = {
-    draggable: canEdit,
+    draggable: canDelete,
     onDragStart: () => onDragStart(item.id),
     onDragOver: (e: React.DragEvent) => onDragOver(e, item.id),
     onDrop: () => onDrop(item.id, null),
@@ -364,7 +365,7 @@ function ItemNode({
             {isCollapsed ? "▸" : "▾"}
           </button>
 
-          {canEdit && <span className="text-slate-700 hover:text-slate-400 text-base leading-none cursor-grab active:cursor-grabbing shrink-0 transition-colors hidden lg:block select-none">⠿</span>}
+          {canDelete && <span className="text-slate-700 hover:text-slate-400 text-base leading-none cursor-grab active:cursor-grabbing shrink-0 transition-colors hidden lg:block select-none">⠿</span>}
 
           {/* Section text — double-click to edit */}
           {isEditing ? (
@@ -402,7 +403,7 @@ function ItemNode({
             >✎</button>
           )}
 
-          {canEdit && (
+          {canDelete && (
             <button
               onClick={() => onDelete(checklistId, item.id)}
               className="shrink-0 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 text-red-400 lg:text-slate-600 hover:text-red-400 bg-red-500/10 lg:bg-transparent border border-red-500/30 lg:border-0 rounded-md text-sm lg:text-xs p-1.5 lg:p-1 min-w-[28px] min-h-[28px] lg:min-w-0 lg:min-h-0 flex items-center justify-center transition-all"
@@ -427,7 +428,7 @@ function ItemNode({
         {!isCollapsed && (
           <div className="ml-2 space-y-0.5 border-l-2 border-slate-800/50 pl-5 mb-4 mt-1">
             {item.children?.map((child) => (
-              <ItemNode key={child.id} item={child} checklistId={checklistId} canEdit={canEdit} canCheck={canCheck}
+              <ItemNode key={child.id} item={child} checklistId={checklistId} canEdit={canEdit} canDelete={canDelete} canCheck={canCheck}
                 collapsedIds={collapsedIds} onToggleCollapse={onToggleCollapse}
                 editingId={editingId} editingText={editingText} onEditStart={onEditStart} onEditChange={onEditChange} onEditSave={onEditSave} onEditCancel={onEditCancel}
                 onCheck={onCheck} onUncheck={onUncheck} onRemoveRevision={onRemoveRevision} onDelete={onDelete} onAddChild={onAddChild}
@@ -476,7 +477,7 @@ function ItemNode({
           <span className="w-4 shrink-0" />
         )}
 
-        {canEdit && <span className="text-slate-700 hover:text-slate-400 text-base leading-none cursor-grab active:cursor-grabbing shrink-0 transition-colors hidden lg:block select-none">⠿</span>}
+        {canDelete && <span className="text-slate-700 hover:text-slate-400 text-base leading-none cursor-grab active:cursor-grabbing shrink-0 transition-colors hidden lg:block select-none">⠿</span>}
 
         {/* − button: remove last revision (undo accidental check) */}
         {item.revisions.length > 0 && canCheck ? (
@@ -560,7 +561,7 @@ function ItemNode({
           >✎</button>
         )}
 
-        {canEdit && (
+        {canDelete && (
           <button
             onClick={() => onDelete(checklistId, item.id)}
             className="shrink-0 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 text-red-400 lg:text-slate-600 hover:text-red-400 bg-red-500/10 lg:bg-transparent border border-red-500/30 lg:border-0 rounded-md text-sm lg:text-xs p-1.5 lg:p-1 min-w-[28px] min-h-[28px] lg:min-w-0 lg:min-h-0 flex items-center justify-center transition-all"
@@ -1494,12 +1495,14 @@ export default function ChecklistSection({
       ...cl,
       isOwner: true,
       canEdit: editModeIds.has(cl.id), // edit mode controlled by toggle
+      canDelete: editModeIds.has(cl.id), // owner can delete when in edit mode
       canCheck: true,
     })),
     ...participating.map((cl) => ({
       ...cl,
       isOwner: false,
       canEdit: cl.visibility === "PUBLIC_EDIT" && editModeIds.has(cl.id),
+      canDelete: false, // participants can never delete — only creator can
       canCheck: true,
     })),
   ];
@@ -1703,7 +1706,22 @@ export default function ChecklistSection({
                     <span className="text-[10px] text-slate-500">by @{cl.user.username}</span>
                   )}
                   {cl.slug && cl.visibility !== "PRIVATE" && cl.visibility !== "PRIVATE_COLLAB" && (
-                    <Link href={`/project/${cl.slug}`} className="text-[10px] text-amber-500 hover:text-amber-400 transition-colors">↗ view</Link>
+                    <>
+                      <Link href={`/project/${cl.slug}`} className="text-[10px] text-amber-500 hover:text-amber-400 transition-colors">↗ view</Link>
+                      <button
+                        onClick={async () => {
+                          const url = `${window.location.origin}/project/${cl.slug}`;
+                          try {
+                            await navigator.clipboard.writeText(url);
+                            toast.success("Project link copied — share it with friends!");
+                          } catch {
+                            toast.info(url);
+                          }
+                        }}
+                        className="text-[10px] text-slate-500 hover:text-amber-400 transition-colors"
+                        title="Copy shareable project link"
+                      >🔗 copy link</button>
+                    </>
                   )}
                 </div>
 
@@ -1779,6 +1797,7 @@ export default function ChecklistSection({
                       key={item.id}
                       item={item}
                       checklistId={cl.id}
+                      canDelete={cl.canDelete}
                       canEdit={cl.canEdit}
                       canCheck={cl.canCheck}
                       collapsedIds={collapsedIds}

@@ -186,11 +186,16 @@ export async function POST(req: Request) {
         });
 
         if (canonical) {
-          // Enforce PUBLIC_EDIT so leaderboard can list all participants.
-          if (canonical.visibility !== "PUBLIC_EDIT") {
+          // Enforce PUBLIC_EDIT + slug so leaderboard and share links work.
+          const needsUpdate =
+            canonical.visibility !== "PUBLIC_EDIT" || !canonical.slug;
+          if (needsUpdate) {
+            const slug =
+              canonical.slug ||
+              `${parsed.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")}-${canonical.id.slice(-6)}`;
             await prisma.checklist.update({
               where: { id: canonical.id },
-              data: { visibility: "PUBLIC_EDIT" },
+              data: { visibility: "PUBLIC_EDIT", slug },
             });
           }
 

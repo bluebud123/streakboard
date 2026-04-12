@@ -74,6 +74,22 @@ export async function GET() {
     }),
   ]);
 
+  // Lazy slug backfill: ensure every public project has a slug for share links.
+  const allChecklists = [...owned, ...participating.map((p: { id: string; name: string; slug: string | null; visibility: string }) => p)];
+  const needSlug = allChecklists.filter(
+    (cl) => !cl.slug && cl.visibility !== "PRIVATE" && cl.visibility !== "PRIVATE_COLLAB"
+  );
+  if (needSlug.length > 0) {
+    await Promise.all(
+      needSlug.map(async (cl) => {
+        const slug = await uniqueSlug(`${slugify(cl.name)}-${nanoid()}`);
+        await prisma.checklist.update({ where: { id: cl.id }, data: { slug } });
+        // Patch the in-memory object so the response includes the slug.
+        (cl as Record<string, unknown>).slug = slug;
+      })
+    );
+  }
+
   return NextResponse.json({ owned, participating, recentRequests: requests });
 }
 
@@ -144,20 +160,14 @@ export async function PATCH(req: Request) {
 
     if (!isOwner && !isParticipant) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-    if (isOwner || isCreator) {
+    if (isOwner) {
+      // Only the project owner can delete items directly.
       await prisma.checklistItem.delete({ where: { id: itemId } });
       return NextResponse.json({ ok: true, deleted: true });
     } else {
-      // Create a request for the creator
-      await prisma.projectRequest.create({
-        data: {
-          type: "DELETE",
-          checklistId: item.checklistId,
-          itemId: item.id,
-          requesterId: userId,
-        },
-      });
-      return NextResponse.json({ ok: true, requested: true });
+      // Participants (including item creators) cannot delete — only the
+      // project owner can. Return a 403 so the UI knows it's blocked.
+      return NextResponse.json({ error: "Only the project owner can delete items." }, { status: 403 });
     }
   }
 
