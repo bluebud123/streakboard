@@ -1502,7 +1502,7 @@ export default function ChecklistSection({
       ...cl,
       isOwner: false,
       canEdit: cl.visibility === "PUBLIC_EDIT" && editModeIds.has(cl.id),
-      canDelete: false, // participants can never delete — only creator can
+      canDelete: cl.visibility === "PUBLIC_EDIT" && editModeIds.has(cl.id), // approved participants get full edit powers
       canCheck: true,
     })),
   ];
@@ -1783,6 +1783,44 @@ export default function ChecklistSection({
                   </div>
                 )}
               </div>
+
+              {/* Pending join requests — owner only */}
+              {cl.isOwner && cl.requests && cl.requests.filter((r: { type: string; status: string }) => r.type === "JOIN" && r.status === "PENDING").length > 0 && (
+                <div className="px-4 pb-2">
+                  <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-2.5 space-y-1.5">
+                    <p className="text-[10px] font-bold text-amber-400 uppercase tracking-widest">Join requests</p>
+                    {cl.requests.filter((r: { type: string; status: string }) => r.type === "JOIN" && r.status === "PENDING").map((r: { id: string; requester: { name: string; username: string } }) => (
+                      <div key={r.id} className="flex items-center justify-between gap-2">
+                        <span className="text-xs text-slate-300">{r.requester.name} <span className="text-slate-500">@{r.requester.username}</span></span>
+                        <div className="flex gap-1">
+                          <button
+                            onClick={async () => {
+                              const res = await fetch("/api/checklists", {
+                                method: "PATCH",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ action: "handleProjectRequest", requestId: r.id, status: "APPROVED" }),
+                              });
+                              if (res.ok) { toast.success(`Approved @${r.requester.username}`); window.location.reload(); }
+                            }}
+                            className="px-2 py-0.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded text-[10px] font-semibold hover:bg-emerald-500/30"
+                          >Approve</button>
+                          <button
+                            onClick={async () => {
+                              const res = await fetch("/api/checklists", {
+                                method: "PATCH",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ action: "handleProjectRequest", requestId: r.id, status: "REJECTED" }),
+                              });
+                              if (res.ok) { toast.success("Request rejected"); window.location.reload(); }
+                            }}
+                            className="px-2 py-0.5 bg-red-500/10 text-red-400 border border-red-500/20 rounded text-[10px] font-semibold hover:bg-red-500/20"
+                          >Reject</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Overall progress bar */}
               <div className="px-4 pb-4">

@@ -106,6 +106,30 @@ export default async function PublicProjectPage({ params }: { params: Promise<{ 
   const isOwner = viewerUserId === cl.userId;
   const isParticipant = isOwner || cl.participants.some((p) => p.user.id === viewerUserId);
 
+  // Check if user has a pending join request
+  let pendingRequest: string | null = null;
+  let joinRequests: { id: string; requesterName: string; requesterUsername: string; createdAt: string }[] = [];
+  if (viewerUserId && !isParticipant) {
+    const req = await prisma.projectRequest.findFirst({
+      where: { checklistId: cl.id, requesterId: viewerUserId, type: "JOIN", status: "PENDING" },
+    });
+    if (req) pendingRequest = req.id;
+  }
+  // If owner, load pending JOIN requests
+  if (isOwner) {
+    const reqs = await prisma.projectRequest.findMany({
+      where: { checklistId: cl.id, type: "JOIN", status: "PENDING" },
+      include: { requester: { select: { name: true, username: true } } },
+      orderBy: { createdAt: "desc" },
+    });
+    joinRequests = reqs.map((r) => ({
+      id: r.id,
+      requesterName: r.requester.name,
+      requesterUsername: r.requester.username,
+      createdAt: r.createdAt.toISOString(),
+    }));
+  }
+
   const participantIds = [cl.userId, ...cl.participants.map((p) => p.user.id)];
   const ownerUser = await prisma.user.findUnique({
     where: { id: cl.userId },
@@ -187,6 +211,8 @@ export default async function PublicProjectPage({ params }: { params: Promise<{ 
           isParticipant={isParticipant}
           viewerUserId={viewerUserId}
           isLoggedIn={!!session}
+          pendingRequest={pendingRequest}
+          joinRequests={joinRequests}
         />
       </main>
     </div>

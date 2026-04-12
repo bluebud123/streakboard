@@ -160,13 +160,11 @@ export async function PATCH(req: Request) {
 
     if (!isOwner && !isParticipant) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-    if (isOwner) {
-      // Only the project owner can delete items directly.
+    if (isOwner || isParticipant) {
+      // Owner and approved participants can delete items.
       await prisma.checklistItem.delete({ where: { id: itemId } });
       return NextResponse.json({ ok: true, deleted: true });
     } else {
-      // Participants (including item creators) cannot delete — only the
-      // project owner can. Return a 403 so the UI knows it's blocked.
       return NextResponse.json({ error: "Only the project owner can delete items." }, { status: 403 });
     }
   }
@@ -401,7 +399,38 @@ export async function PATCH(req: Request) {
     return NextResponse.json(updated);
   }
 
-  // ── join ──────────────────────────────────────────────────────────────────
+  // ── requestJoin (replaces instant join — requires creator approval) ─────
+  if (action === "requestJoin") {
+    const { checklistId } = body;
+    const cl = await prisma.checklist.findUnique({ where: { id: checklistId } });
+    if (!cl || cl.userId === userId) return NextResponse.json({ error: "Cannot join own project" }, { status: 400 });
+    if (cl.visibility === "PRIVATE" || cl.visibility === "PRIVATE_COLLAB" || cl.visibility === "PUBLIC_TEMPLATE") {
+      return NextResponse.json({ error: "Not open for collaboration" }, { status: 403 });
+    }
+    // Already a participant?
+    const existing = await prisma.checklistParticipant.findUnique({
+      where: { checklistId_userId: { checklistId, userId } },
+    });
+    if (existing) return NextResponse.json({ ok: true, alreadyJoined: true });
+    // Check for pending request (max 1 pending per user per project)
+    const pending = await prisma.projectRequest.findFirst({
+      where: { checklistId, requesterId: userId, type: "JOIN", status: "PENDING" },
+    });
+    if (pending) return NextResponse.json({ ok: true, alreadyRequested: true });
+    // Rate limit: max 1 request per day
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const recentRequest = await prisma.projectRequest.findFirst({
+      where: { checklistId, requesterId: userId, type: "JOIN", createdAt: { gte: oneDayAgo } },
+    });
+    if (recentRequest) return NextResponse.json({ error: "You can only request once per day. Please try again later." }, { status: 429 });
+    // Create the request
+    await prisma.projectRequest.create({
+      data: { type: "JOIN", checklistId, requesterId: userId },
+    });
+    return NextResponse.json({ ok: true, requested: true });
+  }
+
+  // ── join (kept for backward compat — used by import/ortho flow) ─────────
   if (action === "join") {
     const { checklistId } = body;
     const cl = await prisma.checklist.findUnique({ where: { id: checklistId } });
@@ -582,6 +611,14 @@ export async function PATCH(req: Request) {
     if (status === "APPROVED") {
       if (request.type === "DELETE" && request.itemId) {
         await prisma.checklistItem.delete({ where: { id: request.itemId } });
+      }
+      if (request.type === "JOIN") {
+        // Add requester as participant
+        await prisma.checklistParticipant.upsert({
+          where: { checklistId_userId: { checklistId: request.checklistId, userId: request.requesterId } },
+          update: {},
+          create: { checklistId: request.checklistId, userId: request.requesterId },
+        });
       }
       await prisma.projectRequest.delete({ where: { id: requestId } });
     } else {
