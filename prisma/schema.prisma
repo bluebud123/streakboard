@@ -17,8 +17,10 @@ model User {
   studyingFor         String
   examDate            String?
   isPublic            Boolean                @default(true)
+  emailVerified       Boolean                @default(false)
   isAdmin             Boolean                @default(false)
   createdAt           DateTime               @default(now())
+  verifications       EmailVerification[]
   checklists          Checklist[]
   checkIns            CheckIn[]
   participants        ChecklistParticipant[]
@@ -149,6 +151,17 @@ model ChecklistRevision {
   createdAt DateTime      @default(now())
 
   @@index([itemId, userId])
+}
+
+model EmailVerification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  code      String   // 6-digit code
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }
 
 model SiteSetting {

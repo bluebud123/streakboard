@@ -1755,10 +1755,21 @@ export default function ChecklistSection({
                     >✕ Delete</button>
                   </div>
                 )}
-                {/* Reset / Leave for participating (non-owner) projects —
-                    always visible (no edit toggle exists for non-owners) */}
+                {/* Edit toggle + Reset / Leave for participating (non-owner) projects */}
                 {!cl.isOwner && (
                   <div className="flex items-center gap-2 mt-1.5 ml-6 flex-wrap">
+                    {cl.visibility === "PUBLIC_EDIT" && (
+                      <button
+                        onClick={() => toggleEditMode(cl.id)}
+                        className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border transition-all ${
+                          isEditMode
+                            ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20"
+                            : "bg-slate-800 border-slate-700 text-slate-500 hover:text-slate-300"
+                        }`}
+                      >
+                        {isEditMode ? "✓ Done editing" : "✎ Edit"}
+                      </button>
+                    )}
                     <button
                       onClick={() => resetProgress(cl.id, cl.name)}
                       className="text-[10px] text-slate-600 hover:text-sky-400 transition-colors px-1"

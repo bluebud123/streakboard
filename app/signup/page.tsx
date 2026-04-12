@@ -64,30 +64,17 @@ function SignupForm() {
       return;
     }
 
-    // Sign in with username
-    const signInRes = await signIn("credentials", {
-      username: form.username.toLowerCase(),
-      password: form.password,
-      redirect: false,
-    });
-
-    if (signInRes?.error) {
-      setError("Account created but sign-in failed. Please log in.");
-      setLoading(false);
-      return;
-    }
-
-    // Migrate guest data if present
+    // Store guest data for migration after verification
     if (pendingMigration) {
-      await fetch("/api/migrate-guest", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(pendingMigration),
-      });
-      try { localStorage.removeItem("streakboard_guest"); } catch { /* noop */ }
+      try { sessionStorage.setItem("streakboard_pending_migration", JSON.stringify(pendingMigration)); } catch { /* noop */ }
     }
 
-    window.location.href = "/dashboard";
+    // Store password temporarily for auto-login after verification
+    try { sessionStorage.setItem("streakboard_verify_pw", form.password); } catch { /* noop */ }
+
+    // Redirect to email verification page
+    const u = encodeURIComponent(form.username.toLowerCase());
+    window.location.href = `/verify-email?u=${u}`;
   }
 
   const usernameHint = () => {

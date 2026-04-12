@@ -8,12 +8,14 @@ export default function LoginPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [needsVerification, setNeedsVerification] = useState(false);
   const [loading, setLoading] = useState(false);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError("");
+    setNeedsVerification(false);
 
     const res = await signIn("credentials", {
       username: username.toLowerCase().trim(),
@@ -23,7 +25,15 @@ export default function LoginPage() {
     });
 
     if (res?.error) {
-      setError("Invalid username or password");
+      // Check if user exists but is unverified (password correct but blocked)
+      const checkRes = await fetch(`/api/check-verified?u=${encodeURIComponent(username.toLowerCase().trim())}`);
+      const checkData = await checkRes.json().catch(() => ({}));
+      if (checkData.exists && !checkData.verified) {
+        setNeedsVerification(true);
+        setError("Please verify your email before signing in.");
+      } else {
+        setError("Invalid username or password");
+      }
       setLoading(false);
     } else if (res?.url) {
       window.location.href = res.url;
@@ -58,7 +68,19 @@ export default function LoginPage() {
             />
           </div>
 
-          {error && <p className="text-red-400 text-xs font-bold uppercase tracking-tighter bg-red-400/10 rounded-xl px-4 py-2.5 border border-red-400/20 animate-fadeIn">{error}</p>}
+          {error && (
+            <div className="bg-red-400/10 rounded-xl px-4 py-2.5 border border-red-400/20 animate-fadeIn">
+              <p className="text-red-400 text-xs font-bold uppercase tracking-tighter">{error}</p>
+              {needsVerification && (
+                <Link
+                  href={`/verify-email?u=${encodeURIComponent(username.toLowerCase().trim())}`}
+                  className="text-amber-500 hover:text-amber-400 text-xs font-bold mt-1 inline-block"
+                >
+                  Go to verification page →
+                </Link>
+              )}
+            </div>
+          )}
 
           <button
             type="submit" disabled={loading}

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import bcrypt from "bcryptjs";
+import { createAndSendVerification } from "@/lib/send-verification-email";
 
 export async function POST(req: Request) {
   const { name, username, email, password, studyingFor, examDate } = await req.json();
@@ -33,8 +34,15 @@ export async function POST(req: Request) {
       password: hashed,
       studyingFor,
       examDate: examDate || null,
+      emailVerified: false,
     },
   });
 
-  return NextResponse.json({ id: user.id, username: user.username }, { status: 201 });
+  // Send verification email
+  await createAndSendVerification(user.id, email);
+
+  return NextResponse.json(
+    { id: user.id, username: user.username, needsVerification: true },
+    { status: 201 }
+  );
 }
