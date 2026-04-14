@@ -68,6 +68,8 @@ export async function GET() {
         user: { select: { name: true, username: true } },
         items: nestedItemsInclude(userId, true),
         participants: { include: { user: { select: { id: true, name: true, username: true } } } },
+        // Include viewer's own pending edit request to surface "Edit request pending"
+        requests: { where: { requesterId: userId, type: "EDIT", status: "PENDING" }, select: { id: true, status: true, type: true } },
       },
       orderBy: { createdAt: "desc" },
     }),
@@ -123,6 +125,13 @@ export async function GET() {
     cl.items = transformItems(cl.items, cl.visibility === "PRIVATE_COLLAB");
   }
 
+  // Expose viewer's own canEdit per participating checklist
+  type ParticipatingShape = { id: string; participants: { userId: string; canEdit?: boolean }[]; viewerCanEdit?: boolean };
+  for (const cl of participating as unknown as ParticipatingShape[]) {
+    const me = cl.participants.find((p) => p.userId === userId);
+    cl.viewerCanEdit = !!me?.canEdit;
+  }
+
   return NextResponse.json({ owned, participating, recentRequests: requests });
 }
 
@@ -154,11 +163,8 @@ export async function PATCH(req: Request) {
     const { checklistId, text, parentId = null, depth = 1 } = body;
     const cl = await prisma.checklist.findUnique({ where: { id: checklistId } });
     if (!cl) return NextResponse.json({ error: "Not found" }, { status: 404 });
-    const editableVis = ["PUBLIC_EDIT", "PUBLIC_COLLAB", "PRIVATE_COLLAB"];
-    const canEdit =
-      cl.userId === userId ||
-      (editableVis.includes(cl.visibility) &&
-        !!(await prisma.checklistParticipant.findUnique({ where: { checklistId_userId: { checklistId, userId } } })));
+    const part = await prisma.checklistParticipant.findUnique({ where: { checklistId_userId: { checklistId, userId } } });
+    const canEdit = cl.userId === userId || (!!part && part.canEdit);
     if (!canEdit) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
     const count = await prisma.checklistItem.count({ where: { checklistId, parentId } });
@@ -173,11 +179,8 @@ export async function PATCH(req: Request) {
     const { itemId, text } = body;
     const item = await prisma.checklistItem.findUnique({ where: { id: itemId }, include: { checklist: true } });
     if (!item) return NextResponse.json({ error: "Not found" }, { status: 404 });
-    const editableVis = ["PUBLIC_EDIT", "PUBLIC_COLLAB", "PRIVATE_COLLAB"];
-    const canEdit =
-      item.checklist.userId === userId ||
-      (editableVis.includes(item.checklist.visibility) &&
-        !!(await prisma.checklistParticipant.findUnique({ where: { checklistId_userId: { checklistId: item.checklistId, userId } } })));
+    const part = await prisma.checklistParticipant.findUnique({ where: { checklistId_userId: { checklistId: item.checklistId, userId } } });
+    const canEdit = item.checklist.userId === userId || (!!part && part.canEdit);
     if (!canEdit) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     const updated = await prisma.checklistItem.update({ where: { id: itemId }, data: { text } });
     return NextResponse.json(updated);
@@ -190,18 +193,13 @@ export async function PATCH(req: Request) {
     if (!item) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
     const isOwner = item.checklist.userId === userId;
-    const isCreator = item.createdById === userId;
-    const isParticipant = !!(await prisma.checklistParticipant.findUnique({ where: { checklistId_userId: { checklistId: item.checklistId, userId } } }));
+    const part = await prisma.checklistParticipant.findUnique({ where: { checklistId_userId: { checklistId: item.checklistId, userId } } });
+    const canEdit = isOwner || (!!part && part.canEdit);
 
-    if (!isOwner && !isParticipant) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    if (!canEdit) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-    if (isOwner || isParticipant) {
-      // Owner and approved participants can delete items.
-      await prisma.checklistItem.delete({ where: { id: itemId } });
-      return NextResponse.json({ ok: true, deleted: true });
-    } else {
-      return NextResponse.json({ error: "Only the project owner can delete items." }, { status: 403 });
-    }
+    await prisma.checklistItem.delete({ where: { id: itemId } });
+    return NextResponse.json({ ok: true, deleted: true });
   }
 
   // ── reorderItems ──────────────────────────────────────────────────────────
@@ -437,32 +435,34 @@ export async function PATCH(req: Request) {
   }
 
   // ── requestJoin (replaces instant join — requires creator approval) ─────
-  if (action === "requestJoin") {
+  // Request EDIT access (after joining as participant). Owner approves to grant edit.
+  if (action === "requestEdit" || action === "requestJoin") {
     const { checklistId } = body;
     const cl = await prisma.checklist.findUnique({ where: { id: checklistId } });
-    if (!cl || cl.userId === userId) return NextResponse.json({ error: "Cannot join own project" }, { status: 400 });
-    if (cl.visibility === "PRIVATE" || cl.visibility === "PRIVATE_COLLAB" || cl.visibility === "PUBLIC_TEMPLATE") {
-      return NextResponse.json({ error: "Not open for collaboration" }, { status: 403 });
+    if (!cl || cl.userId === userId) return NextResponse.json({ error: "Not allowed" }, { status: 400 });
+    if (cl.visibility !== "PUBLIC_COLLAB" && cl.visibility !== "PUBLIC_EDIT") {
+      return NextResponse.json({ error: "Not open for edit requests" }, { status: 403 });
     }
-    // Already a participant?
+    // Must be a participant first
     const existing = await prisma.checklistParticipant.findUnique({
       where: { checklistId_userId: { checklistId, userId } },
     });
-    if (existing) return NextResponse.json({ ok: true, alreadyJoined: true });
+    if (!existing) return NextResponse.json({ error: "Join the project first" }, { status: 400 });
+    if (existing.canEdit) return NextResponse.json({ ok: true, alreadyApproved: true });
     // Check for pending request (max 1 pending per user per project)
     const pending = await prisma.projectRequest.findFirst({
-      where: { checklistId, requesterId: userId, type: "JOIN", status: "PENDING" },
+      where: { checklistId, requesterId: userId, type: "EDIT", status: "PENDING" },
     });
     if (pending) return NextResponse.json({ ok: true, alreadyRequested: true });
     // Rate limit: max 1 request per day
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const recentRequest = await prisma.projectRequest.findFirst({
-      where: { checklistId, requesterId: userId, type: "JOIN", createdAt: { gte: oneDayAgo } },
+      where: { checklistId, requesterId: userId, type: "EDIT", status: { not: "PENDING" }, createdAt: { gte: oneDayAgo } },
     });
     if (recentRequest) return NextResponse.json({ error: "You can only request once per day. Please try again later." }, { status: 429 });
     // Create the request
     await prisma.projectRequest.create({
-      data: { type: "JOIN", checklistId, requesterId: userId },
+      data: { type: "EDIT", checklistId, requesterId: userId },
     });
     return NextResponse.json({ ok: true, requested: true });
   }
@@ -650,14 +650,26 @@ export async function PATCH(req: Request) {
         await prisma.checklistItem.delete({ where: { id: request.itemId } });
       }
       if (request.type === "JOIN") {
-        // Add requester as participant
+        // Legacy: add requester as participant (with edit) for old approval flow
         await prisma.checklistParticipant.upsert({
           where: { checklistId_userId: { checklistId: request.checklistId, userId: request.requesterId } },
-          update: {},
-          create: { checklistId: request.checklistId, userId: request.requesterId },
+          update: { canEdit: true },
+          create: { checklistId: request.checklistId, userId: request.requesterId, canEdit: true },
         });
       }
-      await prisma.projectRequest.delete({ where: { id: requestId } });
+      if (request.type === "EDIT") {
+        // Grant edit access to existing participant
+        await prisma.checklistParticipant.upsert({
+          where: { checklistId_userId: { checklistId: request.checklistId, userId: request.requesterId } },
+          update: { canEdit: true },
+          create: { checklistId: request.checklistId, userId: request.requesterId, canEdit: true },
+        });
+      }
+      // Mark approved (kept so requester sees the notification), don't delete
+      await prisma.projectRequest.update({
+        where: { id: requestId },
+        data: { status: "APPROVED" },
+      });
     } else {
       await prisma.projectRequest.update({
         where: { id: requestId },

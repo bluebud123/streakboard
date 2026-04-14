@@ -28,6 +28,7 @@ interface Props {
   leaderboard: LeaderboardEntry[];
   isOwner: boolean;
   isParticipant: boolean;
+  viewerCanEdit: boolean;
   viewerUserId: string | null;
   isLoggedIn: boolean;
   pendingRequest: string | null;
@@ -252,13 +253,15 @@ function ItemNode({
 
 export default function PublicProjectClient({
   checklistId, visibility, items: initialItems, leaderboard: initialLeaderboard,
-  isOwner, isParticipant, isLoggedIn,
+  isOwner, isParticipant, viewerCanEdit, isLoggedIn,
   pendingRequest: initialPendingRequest, joinRequests: initialJoinRequests,
 }: Props) {
   const [items, setItems] = useState<TreeItem[]>(initialItems);
   const [leaderboard] = useState(initialLeaderboard);
   const [joined, setJoined] = useState(isParticipant);
+  const [hasEditAccess, setHasEditAccess] = useState(viewerCanEdit);
   const [editMode, setEditMode] = useState(false);
+  const [joining, setJoining] = useState(false);
   const [requesting, setRequesting] = useState(false);
   const [hasPendingRequest, setHasPendingRequest] = useState(!!initialPendingRequest);
   const [joinReqs, setJoinReqs] = useState(initialJoinRequests);
@@ -277,9 +280,9 @@ export default function PublicProjectClient({
 
   // Permissions:
   // - canCheck: any logged-in user can check items for personal tracking
-  // - canEdit: only approved participants (joined) or owner
+  // - canEdit: owner, OR participant with explicit edit access (granted by owner)
   const canCheck = isLoggedIn;
-  const canEdit = isOwner || (joined && (visibility === "PUBLIC_EDIT" || visibility === "PUBLIC_COLLAB" || visibility === "PRIVATE_COLLAB"));
+  const canEdit = isOwner || (joined && hasEditAccess);
   const multiParticipant = leaderboard.length > 1;
   const totalCheckable = countCheckable(items);
   const myDone = countMyDone(items);
@@ -319,17 +322,30 @@ export default function PublicProjectClient({
 
   // ── Actions ────────────────────────────────────────────────────────────────
 
-  async function requestJoin() {
+  async function joinProject() {
+    setJoining(true);
+    const res = await fetch("/api/checklists", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "join", checklistId }),
+    });
+    setJoining(false);
+    if (res.ok) { setJoined(true); toast.success("Joined! You can now track your progress."); return; }
+    const data = await res.json().catch(() => ({}));
+    toast.error(data.error || "Could not join — try again.");
+  }
+
+  async function requestEditAccess() {
     setRequesting(true);
     const res = await fetch("/api/checklists", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "requestJoin", checklistId }),
+      body: JSON.stringify({ action: "requestEdit", checklistId }),
     });
     const data = await res.json();
     setRequesting(false);
-    if (data.alreadyJoined) { setJoined(true); toast.success("You're already a member!"); return; }
-    if (data.alreadyRequested || data.requested) { setHasPendingRequest(true); toast.success("Request sent! The creator will review it."); return; }
+    if (data.alreadyApproved) { setHasEditAccess(true); toast.success("You already have edit access!"); return; }
+    if (data.alreadyRequested || data.requested) { setHasPendingRequest(true); toast.success("Edit request sent! The creator will review it."); return; }
     if (!res.ok) { toast.error(data.error || "Could not request — try again later."); return; }
   }
 
@@ -451,23 +467,31 @@ export default function PublicProjectClient({
 
       {/* Action buttons */}
       <div className="flex flex-wrap gap-3 items-center">
-        {/* Request to Join — for non-participants on collab/edit projects */}
+        {/* Join — instant, for non-participants on collab/edit projects */}
         {(visibility === "PUBLIC_COLLAB" || visibility === "PUBLIC_EDIT") && !isOwner && !joined && (
           isLoggedIn ? (
-            hasPendingRequest ? (
-              <span className="px-5 py-2 bg-slate-800 border border-amber-500/30 text-amber-400 rounded-xl text-sm font-semibold">
-                Pending approval
-              </span>
-            ) : (
-              <button onClick={requestJoin} disabled={requesting}
-                className="px-5 py-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-semibold rounded-xl text-sm transition-colors">
-                {requesting ? "Requesting…" : "Request to join"}
-              </button>
-            )
+            <button onClick={joinProject} disabled={joining}
+              className="px-5 py-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-semibold rounded-xl text-sm transition-colors">
+              {joining ? "Joining…" : "Join project"}
+            </button>
           ) : (
             <Link href="/signup" className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold rounded-xl text-sm transition-colors">
               Sign up to join
             </Link>
+          )
+        )}
+
+        {/* Request edit access — joined participant on collab/edit, no edit yet */}
+        {(visibility === "PUBLIC_COLLAB" || visibility === "PUBLIC_EDIT") && !isOwner && joined && !hasEditAccess && (
+          hasPendingRequest ? (
+            <span className="px-5 py-2 bg-slate-800 border border-amber-500/30 text-amber-400 rounded-xl text-sm font-semibold">
+              Edit request pending
+            </span>
+          ) : (
+            <button onClick={requestEditAccess} disabled={requesting}
+              className="px-5 py-2 bg-sky-500 hover:bg-sky-400 disabled:opacity-50 text-slate-950 font-semibold rounded-xl text-sm transition-colors">
+              {requesting ? "Requesting…" : "Request edit access"}
+            </button>
           )
         )}
 
@@ -515,10 +539,10 @@ export default function PublicProjectClient({
         )}
       </div>
 
-      {/* Pending join requests — only visible to creator */}
+      {/* Pending edit-access requests — only visible to creator */}
       {isOwner && joinReqs.length > 0 && (
         <section className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-4 space-y-3">
-          <h3 className="text-sm font-semibold text-amber-400">Pending join requests</h3>
+          <h3 className="text-sm font-semibold text-amber-400">Pending edit-access requests</h3>
           {joinReqs.map((req) => (
             <div key={req.id} className="flex items-center justify-between gap-3 bg-slate-900 rounded-lg px-3 py-2">
               <div>

@@ -104,21 +104,27 @@ export default async function PublicProjectPage({ params }: { params: Promise<{ 
   if (!cl || cl.visibility === "PRIVATE" || cl.visibility === "PRIVATE_COLLAB") notFound();
 
   const isOwner = viewerUserId === cl.userId;
-  const isParticipant = isOwner || cl.participants.some((p) => p.user.id === viewerUserId);
+  const myParticipantRecord = viewerUserId
+    ? cl.participants.find((p) => p.user.id === viewerUserId)
+    : undefined;
+  const isParticipant = isOwner || !!myParticipantRecord;
+  // Whether viewer has been granted edit access (or is owner / PRIVATE_COLLAB member)
+  const viewerCanEdit =
+    isOwner || !!(myParticipantRecord && (myParticipantRecord as { canEdit?: boolean }).canEdit);
 
-  // Check if user has a pending join request
+  // Check if user has a pending edit-access request
   let pendingRequest: string | null = null;
   let joinRequests: { id: string; requesterName: string; requesterUsername: string; createdAt: string }[] = [];
-  if (viewerUserId && !isParticipant) {
+  if (viewerUserId && isParticipant && !viewerCanEdit) {
     const req = await prisma.projectRequest.findFirst({
-      where: { checklistId: cl.id, requesterId: viewerUserId, type: "JOIN", status: "PENDING" },
+      where: { checklistId: cl.id, requesterId: viewerUserId, type: "EDIT", status: "PENDING" },
     });
     if (req) pendingRequest = req.id;
   }
-  // If owner, load pending JOIN requests
+  // If owner, load pending EDIT requests
   if (isOwner) {
     const reqs = await prisma.projectRequest.findMany({
-      where: { checklistId: cl.id, type: "JOIN", status: "PENDING" },
+      where: { checklistId: cl.id, type: "EDIT", status: "PENDING" },
       include: { requester: { select: { name: true, username: true } } },
       orderBy: { createdAt: "desc" },
     });
@@ -209,6 +215,7 @@ export default async function PublicProjectPage({ params }: { params: Promise<{ 
           leaderboard={leaderboard}
           isOwner={isOwner}
           isParticipant={isParticipant}
+          viewerCanEdit={viewerCanEdit}
           viewerUserId={viewerUserId}
           isLoggedIn={!!session}
           pendingRequest={pendingRequest}

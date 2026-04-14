@@ -126,6 +126,7 @@ model ChecklistParticipant {
   userId      String
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   joinedAt    DateTime  @default(now())
+  canEdit     Boolean   @default(false) // True for invited PRIVATE_COLLAB members or after edit-request approved
 
   @@unique([checklistId, userId])
   @@index([userId])

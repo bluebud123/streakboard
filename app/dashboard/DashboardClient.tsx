@@ -223,7 +223,13 @@ function ProjectRequests({ ownedProjects, recentRequests, onAction }: {
             {pending.map(r => (
               <div key={r.id} className="bg-slate-800/50 rounded-xl p-3 border border-slate-700/50">
                 <p className="text-xs text-slate-300">
-                  <span className="text-amber-400 font-medium">@{r.requester.username}</span> requested to delete an item from <span className="text-slate-100 font-medium">{r.project}</span>
+                  <span className="text-amber-400 font-medium">@{r.requester?.username}</span>{" "}
+                  {r.type === "EDIT"
+                    ? "requested edit access to"
+                    : r.type === "JOIN"
+                      ? "requested to join"
+                      : "requested to delete an item from"}{" "}
+                  <span className="text-slate-100 font-medium">{r.project}</span>
                 </p>
                 <div className="flex gap-2 mt-3">
                   <button onClick={() => handleRequest(r.id, "APPROVED")} className="flex-1 py-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-[10px] font-bold rounded-lg transition-colors">APPROVE</button>

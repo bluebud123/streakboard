@@ -11,7 +11,8 @@
       "Bash(npx vercel:*)",
       "Bash(npx next:*)",
       "Bash(git commit:*)",
-      "Bash(npx prisma:*)"
+      "Bash(npx prisma:*)",
+      "Bash(node -e 'const {PrismaClient}=require\\('\\\\''@prisma/client'\\\\''\\);const p=new PrismaClient\\(\\);\\(async\\(\\)=>{const r=await p.checklistParticipant.updateMany\\({where:{checklist:{visibility:'\\\\''PRIVATE_COLLAB'\\\\''}},data:{canEdit:true}}\\);console.log\\('\\\\''PRIVATE_COLLAB participants updated:'\\\\'',r.count\\);await p.$disconnect\\(\\);}\\)\\(\\)')"
     ]
   }
 }

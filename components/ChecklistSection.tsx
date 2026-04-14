@@ -37,7 +37,8 @@ export interface ChecklistData {
   items: TreeItem[];
   participants: { user: { id: string; name: string; username: string } }[];
   user?: { name: string; username: string };
-  requests?: { id: string; type: string; status: string; requester: { name: string; username: string } }[];
+  requests?: { id: string; type: string; status: string; requester?: { name: string; username: string } }[];
+  viewerCanEdit?: boolean;
 }
 
 interface SectionProgressParticipant {
@@ -1527,12 +1528,12 @@ export default function ChecklistSection({
       canCheck: true,
     })),
     ...participating.map((cl) => {
-      const editable = ["PUBLIC_EDIT", "PUBLIC_COLLAB", "PRIVATE_COLLAB"].includes(cl.visibility);
+      const hasEditAccess = !!cl.viewerCanEdit;
       return {
         ...cl,
         isOwner: false,
-        canEdit: editable && editModeIds.has(cl.id),
-        canDelete: editable && editModeIds.has(cl.id), // approved participants get full edit powers
+        canEdit: hasEditAccess && editModeIds.has(cl.id),
+        canDelete: hasEditAccess && editModeIds.has(cl.id),
         canCheck: true,
       };
     }),
@@ -1789,7 +1790,8 @@ export default function ChecklistSection({
                 {/* Edit toggle + Reset / Leave for participating (non-owner) projects */}
                 {!cl.isOwner && (
                   <div className="flex items-center gap-2 mt-1.5 ml-6 flex-wrap">
-                    {["PUBLIC_EDIT", "PUBLIC_COLLAB", "PRIVATE_COLLAB"].includes(cl.visibility) && (
+                    {/* Edit toggle — only if viewer has been granted edit access */}
+                    {cl.viewerCanEdit && (
                       <button
                         onClick={() => toggleEditMode(cl.id)}
                         className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border transition-all ${
@@ -1800,6 +1802,26 @@ export default function ChecklistSection({
                       >
                         {isEditMode ? "✓ Done editing" : "✎ Edit"}
                       </button>
+                    )}
+                    {/* Request edit access — for joined participants on PUBLIC_COLLAB/EDIT without edit yet */}
+                    {!cl.viewerCanEdit && (cl.visibility === "PUBLIC_COLLAB" || cl.visibility === "PUBLIC_EDIT") && (
+                      (cl.requests || []).some(r => r.type === "EDIT" && r.status === "PENDING") ? (
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-800 border border-amber-500/30 text-amber-400">⏳ Edit request pending</span>
+                      ) : (
+                        <button
+                          onClick={async () => {
+                            const res = await fetch("/api/checklists", {
+                              method: "PATCH",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ action: "requestEdit", checklistId: cl.id }),
+                            });
+                            const data = await res.json().catch(() => ({}));
+                            if (res.ok) toast.success(data.alreadyApproved ? "You already have edit access" : "Edit request sent!");
+                            else toast.error(data.error || "Could not send request");
+                          }}
+                          className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-sky-500/10 border border-sky-500/30 text-sky-400 hover:bg-sky-500/20"
+                        >✎ Request edit access</button>
+                      )
                     )}
                     <button
                       onClick={() => resetProgress(cl.id, cl.name)}
@@ -1815,14 +1837,14 @@ export default function ChecklistSection({
                 )}
               </div>
 
-              {/* Pending join requests — owner only */}
-              {cl.isOwner && cl.requests && cl.requests.filter((r: { type: string; status: string }) => r.type === "JOIN" && r.status === "PENDING").length > 0 && (
+              {/* Pending edit/join requests — owner only */}
+              {cl.isOwner && cl.requests && cl.requests.filter((r: { type: string; status: string }) => (r.type === "JOIN" || r.type === "EDIT") && r.status === "PENDING").length > 0 && (
                 <div className="px-4 pb-2">
                   <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-2.5 space-y-1.5">
-                    <p className="text-[10px] font-bold text-amber-400 uppercase tracking-widest">Join requests</p>
-                    {cl.requests.filter((r: { type: string; status: string }) => r.type === "JOIN" && r.status === "PENDING").map((r: { id: string; requester: { name: string; username: string } }) => (
+                    <p className="text-[10px] font-bold text-amber-400 uppercase tracking-widest">Edit-access requests</p>
+                    {cl.requests.filter((r: { type: string; status: string }) => (r.type === "JOIN" || r.type === "EDIT") && r.status === "PENDING").map((r: { id: string; type: string; requester?: { name: string; username: string } }) => (
                       <div key={r.id} className="flex items-center justify-between gap-2">
-                        <span className="text-xs text-slate-300">{r.requester.name} <span className="text-slate-500">@{r.requester.username}</span></span>
+                        <span className="text-xs text-slate-300">{r.requester?.name ?? "Member"} <span className="text-slate-500">@{r.requester?.username}</span> <span className="text-[9px] text-slate-600">({r.type === "EDIT" ? "edit access" : "join"})</span></span>
                         <div className="flex gap-1">
                           <button
                             onClick={async () => {
@@ -1831,7 +1853,7 @@ export default function ChecklistSection({
                                 headers: { "Content-Type": "application/json" },
                                 body: JSON.stringify({ action: "handleProjectRequest", requestId: r.id, status: "APPROVED" }),
                               });
-                              if (res.ok) { toast.success(`Approved @${r.requester.username}`); window.location.reload(); }
+                              if (res.ok) { toast.success(`Approved @${r.requester?.username ?? "member"}`); window.location.reload(); }
                             }}
                             className="px-2 py-0.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded text-[10px] font-semibold hover:bg-emerald-500/30"
                           >Approve</button>
