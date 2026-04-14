@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__Claude_Preview__preview_start",
+      "Bash(ls C:/Users/TAN/streakboard/.env*)",
+      "Bash(ls .env*)",
+      "Bash(grep -v \"^$\")",
+      "Bash(git add:*)",
+      "Bash(git commit -m ':*)",
+      "Bash(git push:*)",
+      "Bash(npx vercel:*)",
+      "Bash(npx next:*)",
+      "Bash(git commit:*)",
+      "Bash(npx prisma:*)"
+    ]
+  }
+}

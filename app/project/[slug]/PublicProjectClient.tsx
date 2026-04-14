@@ -279,7 +279,7 @@ export default function PublicProjectClient({
   // - canCheck: any logged-in user can check items for personal tracking
   // - canEdit: only approved participants (joined) or owner
   const canCheck = isLoggedIn;
-  const canEdit = isOwner || (joined && (visibility === "PUBLIC_EDIT" || visibility === "PUBLIC_COLLAB"));
+  const canEdit = isOwner || (joined && (visibility === "PUBLIC_EDIT" || visibility === "PUBLIC_COLLAB" || visibility === "PRIVATE_COLLAB"));
   const multiParticipant = leaderboard.length > 1;
   const totalCheckable = countCheckable(items);
   const myDone = countMyDone(items);

@@ -20,6 +20,8 @@ export interface TreeItem {
   progress: Progress[];
   revisions: Revision[];
   children?: TreeItem[];
+  // For PRIVATE_COLLAB: list of members who have completed this item
+  sharedProgress?: { userId: string; name: string; username: string }[];
 }
 
 export interface ChecklistData {
@@ -517,6 +519,24 @@ function ItemNode({
             onDoubleClick={() => canEdit && onEditStart(item.id, item.text)}
           >
             {item.text}
+          </span>
+        )}
+
+        {/* Shared progress badges (PRIVATE_COLLAB) — show who completed it */}
+        {item.sharedProgress && item.sharedProgress.length > 0 && (
+          <span
+            className="shrink-0 flex items-center gap-1"
+            title={`Done by: ${item.sharedProgress.map(p => p.name).join(", ")}`}
+          >
+            {item.sharedProgress.slice(0, 3).map((p) => (
+              <span
+                key={p.userId}
+                className="w-5 h-5 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-[10px] font-bold text-emerald-400"
+              >{p.name[0]?.toUpperCase()}</span>
+            ))}
+            {item.sharedProgress.length > 3 && (
+              <span className="text-[10px] text-slate-500 ml-0.5">+{item.sharedProgress.length - 3}</span>
+            )}
           </span>
         )}
 
@@ -1506,13 +1526,16 @@ export default function ChecklistSection({
       canDelete: editModeIds.has(cl.id), // owner can delete when in edit mode
       canCheck: true,
     })),
-    ...participating.map((cl) => ({
-      ...cl,
-      isOwner: false,
-      canEdit: cl.visibility === "PUBLIC_EDIT" && editModeIds.has(cl.id),
-      canDelete: cl.visibility === "PUBLIC_EDIT" && editModeIds.has(cl.id), // approved participants get full edit powers
-      canCheck: true,
-    })),
+    ...participating.map((cl) => {
+      const editable = ["PUBLIC_EDIT", "PUBLIC_COLLAB", "PRIVATE_COLLAB"].includes(cl.visibility);
+      return {
+        ...cl,
+        isOwner: false,
+        canEdit: editable && editModeIds.has(cl.id),
+        canDelete: editable && editModeIds.has(cl.id), // approved participants get full edit powers
+        canCheck: true,
+      };
+    }),
   ];
   const isEmpty = allProjects.length === 0;
 
@@ -1766,7 +1789,7 @@ export default function ChecklistSection({
                 {/* Edit toggle + Reset / Leave for participating (non-owner) projects */}
                 {!cl.isOwner && (
                   <div className="flex items-center gap-2 mt-1.5 ml-6 flex-wrap">
-                    {cl.visibility === "PUBLIC_EDIT" && (
+                    {["PUBLIC_EDIT", "PUBLIC_COLLAB", "PRIVATE_COLLAB"].includes(cl.visibility) && (
                       <button
                         onClick={() => toggleEditMode(cl.id)}
                         className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border transition-all ${

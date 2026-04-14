@@ -113,6 +113,7 @@ model ProjectRequest {
   status      String    @default("PENDING") // PENDING, APPROVED, REJECTED
   message     String?   // For rejection feedback
   createdAt   DateTime  @default(now())
+  dismissedAt DateTime? // When the requester dismissed the resolved notification
 
   @@index([checklistId])
   @@index([requesterId])

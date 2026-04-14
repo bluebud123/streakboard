@@ -16,23 +16,28 @@ async function uniqueSlug(base: string): Promise<string> {
   return slug;
 }
 
-// Helper: nested items include (2 levels deep)
-function nestedItemsInclude(userId: string) {
+// Helper: nested items include (2 levels deep).
+// When `shared` is true (PRIVATE_COLLAB), fetches ALL participants' progress
+// with user names so the UI can show one shared progress and "done by @name".
+function nestedItemsInclude(userId: string, shared = false) {
+  const progressInclude = shared
+    ? { include: { user: { select: { id: true, name: true, username: true } } } }
+    : { where: { userId } };
   return {
     where: { parentId: null },
     orderBy: { order: "asc" as const },
     include: {
-      progress: { where: { userId } },
+      progress: progressInclude,
       personalOrders: { where: { userId } },
       children: {
         orderBy: { order: "asc" as const },
         include: {
-          progress: { where: { userId } },
+          progress: progressInclude,
           personalOrders: { where: { userId } },
           children: {
             orderBy: { order: "asc" as const },
             include: {
-              progress: { where: { userId } },
+              progress: progressInclude,
               personalOrders: { where: { userId } },
             },
           },
@@ -51,7 +56,7 @@ export async function GET() {
     prisma.checklist.findMany({
       where: { userId },
       include: {
-        items: nestedItemsInclude(userId),
+        items: nestedItemsInclude(userId, true),
         participants: { include: { user: { select: { id: true, name: true, username: true } } } },
         requests: { where: { status: "PENDING" }, include: { requester: { select: { name: true, username: true } } } },
       },
@@ -61,16 +66,16 @@ export async function GET() {
       where: { participants: { some: { userId } }, userId: { not: userId } },
       include: {
         user: { select: { name: true, username: true } },
-        items: nestedItemsInclude(userId),
+        items: nestedItemsInclude(userId, true),
         participants: { include: { user: { select: { id: true, name: true, username: true } } } },
       },
       orderBy: { createdAt: "desc" },
     }),
     prisma.projectRequest.findMany({
-      where: { requesterId: userId, status: { not: "PENDING" } },
+      where: { requesterId: userId, status: { not: "PENDING" }, dismissedAt: null },
       include: { checklist: { select: { name: true } } },
       orderBy: { createdAt: "desc" },
-      take: 5,
+      take: 10,
     }),
   ]);
 
@@ -88,6 +93,34 @@ export async function GET() {
         (cl as Record<string, unknown>).slug = slug;
       })
     );
+  }
+
+  // Post-process items: for PRIVATE_COLLAB, expose sharedProgress (all members)
+  // and rewrite progress to a single entry indicating "anyone done".
+  // For everything else, narrow progress to current user's own record.
+  type AnyItem = { progress: Array<{ userId: string; done: boolean; user?: { id: string; name: string; username: string } }>; children?: AnyItem[]; sharedProgress?: unknown };
+  function transformItems(items: AnyItem[], shared: boolean): AnyItem[] {
+    return items.map((it) => {
+      const all = it.progress || [];
+      if (shared) {
+        const anyDone = all.some((p) => p.done);
+        return {
+          ...it,
+          sharedProgress: all.filter((p) => p.done && p.user).map((p) => ({ userId: p.userId, name: p.user!.name, username: p.user!.username })),
+          progress: anyDone ? [{ userId, done: true }] : [],
+          children: it.children ? transformItems(it.children, shared) : [],
+        };
+      }
+      return {
+        ...it,
+        progress: all.filter((p) => p.userId === userId),
+        children: it.children ? transformItems(it.children, shared) : [],
+      };
+    });
+  }
+  type AnyChecklist = { visibility: string; items: AnyItem[] };
+  for (const cl of [...owned, ...participating] as AnyChecklist[]) {
+    cl.items = transformItems(cl.items, cl.visibility === "PRIVATE_COLLAB");
   }
 
   return NextResponse.json({ owned, participating, recentRequests: requests });
@@ -121,9 +154,10 @@ export async function PATCH(req: Request) {
     const { checklistId, text, parentId = null, depth = 1 } = body;
     const cl = await prisma.checklist.findUnique({ where: { id: checklistId } });
     if (!cl) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    const editableVis = ["PUBLIC_EDIT", "PUBLIC_COLLAB", "PRIVATE_COLLAB"];
     const canEdit =
       cl.userId === userId ||
-      (cl.visibility === "PUBLIC_EDIT" &&
+      (editableVis.includes(cl.visibility) &&
         !!(await prisma.checklistParticipant.findUnique({ where: { checklistId_userId: { checklistId, userId } } })));
     if (!canEdit) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
@@ -139,9 +173,10 @@ export async function PATCH(req: Request) {
     const { itemId, text } = body;
     const item = await prisma.checklistItem.findUnique({ where: { id: itemId }, include: { checklist: true } });
     if (!item) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    const editableVis = ["PUBLIC_EDIT", "PUBLIC_COLLAB", "PRIVATE_COLLAB"];
     const canEdit =
       item.checklist.userId === userId ||
-      (item.checklist.visibility === "PUBLIC_EDIT" &&
+      (editableVis.includes(item.checklist.visibility) &&
         !!(await prisma.checklistParticipant.findUnique({ where: { checklistId_userId: { checklistId: item.checklistId, userId } } })));
     if (!canEdit) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     const updated = await prisma.checklistItem.update({ where: { id: itemId }, data: { text } });
@@ -629,6 +664,22 @@ export async function PATCH(req: Request) {
         data: { status: "REJECTED", message: message || "Request denied by owner" },
       });
     }
+    return NextResponse.json({ ok: true });
+  }
+
+  // ── dismissRequest (requester clears a resolved notification) ──────────────
+  if (action === "dismissRequest") {
+    const { requestId, all } = body;
+    if (all) {
+      await prisma.projectRequest.updateMany({
+        where: { requesterId: userId, status: { not: "PENDING" }, dismissedAt: null },
+        data: { dismissedAt: new Date() },
+      });
+      return NextResponse.json({ ok: true });
+    }
+    const req = await prisma.projectRequest.findUnique({ where: { id: requestId } });
+    if (!req || req.requesterId !== userId) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    await prisma.projectRequest.update({ where: { id: requestId }, data: { dismissedAt: new Date() } });
     return NextResponse.json({ ok: true });
   }
 

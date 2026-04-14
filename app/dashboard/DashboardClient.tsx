@@ -237,15 +237,42 @@ function ProjectRequests({ ownedProjects, recentRequests, onAction }: {
 
       {recentRequests.length > 0 && (
         <div>
-          <h3 className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-2">Recent Notifications</h3>
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Recent Notifications</h3>
+            <button
+              onClick={async () => {
+                const res = await fetch("/api/checklists", {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ action: "dismissRequest", all: true }),
+                });
+                if (res.ok) onAction();
+              }}
+              className="text-[10px] text-slate-500 hover:text-amber-400 transition-colors"
+            >Clear all</button>
+          </div>
           <div className="space-y-2">
             {recentRequests.map(r => (
-              <div key={r.id} className="text-[11px] text-slate-400 py-1 border-b border-slate-800/50 last:border-0">
-                {r.status === "REJECTED" ? (
-                  <span className="text-red-400/80">✕ Your request for "{r.checklist.name}" was denied.</span>
-                ) : (
-                  <span className="text-emerald-400/80">✓ Your request for "{r.checklist.name}" was approved.</span>
-                )}
+              <div key={r.id} className="flex items-center justify-between gap-2 text-[11px] text-slate-400 py-1 border-b border-slate-800/50 last:border-0">
+                <span className="flex-1">
+                  {r.status === "REJECTED" ? (
+                    <span className="text-red-400/80">✕ Your request for "{r.checklist.name}" was denied.</span>
+                  ) : (
+                    <span className="text-emerald-400/80">✓ Your request for "{r.checklist.name}" was approved.</span>
+                  )}
+                </span>
+                <button
+                  onClick={async () => {
+                    const res = await fetch("/api/checklists", {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ action: "dismissRequest", requestId: r.id }),
+                    });
+                    if (res.ok) onAction();
+                  }}
+                  className="text-slate-600 hover:text-red-400 transition-colors px-1"
+                  title="Dismiss"
+                >✕</button>
               </div>
             ))}
           </div>
