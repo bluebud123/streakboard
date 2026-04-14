@@ -986,11 +986,18 @@ export default function ChecklistSection({
   }, [expanded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function patchOwned(id: string, updater: (cl: ChecklistData) => ChecklistData) {
+    // Patches checklist in either owned or participating, so dashboard updates
+    // optimistically work for both project owners and participants.
+    let foundInOwned = false;
     setOwned((prev) => {
-      const next = prev.map((cl) => (cl.id === id ? updater(cl) : cl));
-      onOwnedChange?.(next);
+      const next = prev.map((cl) => {
+        if (cl.id === id) { foundInOwned = true; return updater(cl); }
+        return cl;
+      });
+      if (foundInOwned) onOwnedChange?.(next);
       return next;
     });
+    setParticipating((prev) => prev.map((cl) => (cl.id === id ? updater(cl) : cl)));
   }
 
   function openNew(mode: "blank" | "template" | "upload") {
@@ -1773,12 +1780,12 @@ export default function ChecklistSection({
                     )}
                     <button
                       onClick={() => resetProgress(cl.id, cl.name)}
-                      className="text-[10px] text-slate-600 hover:text-sky-400 transition-colors px-1"
+                      className="text-xs px-2 py-1 rounded-lg bg-slate-800 border border-slate-700 text-slate-400 hover:text-sky-400 hover:border-sky-500/30 transition-colors"
                       title="Reset all my progress on this project"
-                    >↺ Reset my progress</button>
+                    >↺ Reset progress</button>
                     <button
                       onClick={() => leaveProject(cl.id, cl.name)}
-                      className="text-[10px] text-slate-600 hover:text-red-400 transition-colors px-1"
+                      className="text-xs px-2 py-1 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 hover:bg-red-500/20 transition-colors font-medium"
                       title="Leave this shared project"
                     >🚪 Leave project</button>
                   </div>
