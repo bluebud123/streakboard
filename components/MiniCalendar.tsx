@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 interface CheckInRecord {
   id: string;
@@ -21,11 +21,24 @@ const MONTHS = ["January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December"];
 
 export default function MiniCalendar({ checkIns, reviewsByDate = {}, defaultDate }: Props) {
-  const today = new Date();
+  const [now, setNow] = useState<Date | null>(null);
+  const today = now ?? new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
   // Auto-select today (or provided defaultDate) on mount
   const [selected, setSelected] = useState<string | null>(defaultDate ?? null);
+
+  // Re-initialize with client-side time after mount to fix SSR timezone mismatch
+  useEffect(() => {
+    const clientNow = new Date();
+    setNow(clientNow);
+    setYear(clientNow.getFullYear());
+    setMonth(clientNow.getMonth());
+    if (!defaultDate) {
+      const pad = (n: number) => String(n).padStart(2, "0");
+      setSelected(`${clientNow.getFullYear()}-${pad(clientNow.getMonth() + 1)}-${pad(clientNow.getDate())}`);
+    }
+  }, [defaultDate]);
 
   // Group check-ins by date
   const checkInsByDate: Record<string, CheckInRecord[]> = {};

@@ -509,7 +509,7 @@ export default function PublicProjectClient({
         {/* Leave project — for participants (not owner) */}
         {joined && !isOwner && (
           <button onClick={leaveProject} disabled={leaving}
-            className="px-3 py-2 text-xs text-slate-500 hover:text-red-400 transition-colors">
+            className="px-4 py-2 text-sm text-red-400 border border-red-500/30 bg-red-500/5 hover:bg-red-500/15 rounded-xl font-medium transition-colors">
             {leaving ? "Leaving…" : "Leave project"}
           </button>
         )}
@@ -573,8 +573,8 @@ export default function PublicProjectClient({
         </div>
       </section>
 
-      {/* Leaderboard — visible to all */}
-      {leaderboard.length > 0 && (visibility === "PUBLIC_COLLAB" || visibility === "PUBLIC_EDIT") && (
+      {/* Leaderboard — visible only to creator */}
+      {isOwner && leaderboard.length > 0 && (
         <section className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
           <h2 className="font-semibold text-slate-200 mb-4">Leaderboard</h2>
           <div className="space-y-2">
@@ -593,6 +593,25 @@ export default function PublicProjectClient({
                 </div>
               );
             })}
+          </div>
+        </section>
+      )}
+
+      {/* Participants list (no ranking) — visible to non-owners */}
+      {!isOwner && leaderboard.length > 0 && (visibility === "PUBLIC_COLLAB" || visibility === "PUBLIC_EDIT") && (
+        <section className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+          <h2 className="font-semibold text-slate-200 mb-4">Participants ({leaderboard.length})</h2>
+          <div className="flex flex-wrap gap-2">
+            {leaderboard.map((p) => (
+              <Link key={p.id} href={`/u/${p.username}`}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 rounded-lg text-sm text-slate-300 hover:text-amber-400 transition-colors">
+                <span className="w-5 h-5 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-[10px] font-bold text-amber-500 shrink-0">
+                  {p.name[0].toUpperCase()}
+                </span>
+                {p.name}
+                {p.isOwner && <span className="text-[10px] text-amber-400 ml-0.5">(owner)</span>}
+              </Link>
+            ))}
           </div>
         </section>
       )}

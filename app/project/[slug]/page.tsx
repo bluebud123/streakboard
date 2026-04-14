@@ -101,7 +101,7 @@ export default async function PublicProjectPage({ params }: { params: Promise<{ 
     },
   });
 
-  if (!cl || cl.visibility === "PRIVATE") notFound();
+  if (!cl || cl.visibility === "PRIVATE" || cl.visibility === "PRIVATE_COLLAB") notFound();
 
   const isOwner = viewerUserId === cl.userId;
   const isParticipant = isOwner || cl.participants.some((p) => p.user.id === viewerUserId);

@@ -205,10 +205,12 @@ export async function PATCH(req: Request) {
     const item = await prisma.checklistItem.findUnique({ where: { id: itemId }, include: { checklist: true } });
     if (!item) return NextResponse.json({ error: "Not found" }, { status: 404 });
     const isOwner = item.checklist.userId === userId;
+    const isPublicProject = ["PUBLIC_TEMPLATE", "PUBLIC_COLLAB", "PUBLIC_EDIT"].includes(item.checklist.visibility);
     const isParticipant =
       !isOwner &&
       !!(await prisma.checklistParticipant.findUnique({ where: { checklistId_userId: { checklistId: item.checklistId, userId } } }));
-    if (!isOwner && !isParticipant) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    // Allow any logged-in user to toggle progress on public projects (personal tracking)
+    if (!isOwner && !isParticipant && !isPublicProject) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
     const existing = await prisma.checklistProgress.findUnique({ where: { itemId_userId: { itemId, userId } } });
     if (existing) {

@@ -35,6 +35,7 @@ export interface ChecklistData {
   items: TreeItem[];
   participants: { user: { id: string; name: string; username: string } }[];
   user?: { name: string; username: string };
+  requests?: { id: string; type: string; status: string; requester: { name: string; username: string } }[];
 }
 
 interface SectionProgressParticipant {
@@ -574,7 +575,7 @@ function ItemNode({
       {!isCollapsed && item.depth < 2 && (
         <div className="ml-9 space-y-0.5 mt-1 border-l border-slate-800 pl-4 mb-2">
           {item.children?.map((child) => (
-            <ItemNode key={child.id} item={child} checklistId={checklistId} canEdit={canEdit} canCheck={canCheck}
+            <ItemNode key={child.id} item={child} checklistId={checklistId} canEdit={canEdit} canDelete={canDelete} canCheck={canCheck}
               collapsedIds={collapsedIds} onToggleCollapse={onToggleCollapse}
               editingId={editingId} editingText={editingText} onEditStart={onEditStart} onEditChange={onEditChange} onEditSave={onEditSave} onEditCancel={onEditCancel}
               onCheck={onCheck} onUncheck={onUncheck} onRemoveRevision={onRemoveRevision} onDelete={onDelete} onAddChild={onAddChild}
