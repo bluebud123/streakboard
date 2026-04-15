@@ -19,9 +19,7 @@ const sentryEnabled = !!process.env.NEXT_PUBLIC_SENTRY_DSN;
 
 export default sentryEnabled
   ? withSentryConfig(nextConfig, {
-      // Silence source-map upload unless SENTRY_AUTH_TOKEN is set in CI/Vercel
       silent: true,
-      tunnelRoute: "/monitoring",
       hideSourceMaps: true,
       disableLogger: true,
     })

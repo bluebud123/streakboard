@@ -12,7 +12,22 @@
       "Bash(npx next:*)",
       "Bash(git commit:*)",
       "Bash(npx prisma:*)",
-      "Bash(node -e 'const {PrismaClient}=require\\('\\\\''@prisma/client'\\\\''\\);const p=new PrismaClient\\(\\);\\(async\\(\\)=>{const r=await p.checklistParticipant.updateMany\\({where:{checklist:{visibility:'\\\\''PRIVATE_COLLAB'\\\\''}},data:{canEdit:true}}\\);console.log\\('\\\\''PRIVATE_COLLAB participants updated:'\\\\'',r.count\\);await p.$disconnect\\(\\);}\\)\\(\\)')"
+      "Bash(node -e 'const {PrismaClient}=require\\('\\\\''@prisma/client'\\\\''\\);const p=new PrismaClient\\(\\);\\(async\\(\\)=>{const r=await p.checklistParticipant.updateMany\\({where:{checklist:{visibility:'\\\\''PRIVATE_COLLAB'\\\\''}},data:{canEdit:true}}\\);console.log\\('\\\\''PRIVATE_COLLAB participants updated:'\\\\'',r.count\\);await p.$disconnect\\(\\);}\\)\\(\\)')",
+      "Bash(npx tsc:*)",
+      "Bash(curl -sI https://streakboard.tohimher.com/)",
+      "Bash(curl -sI https://streakboard.tohimher.com/dashboard)",
+      "Bash(curl -sI https://streakboard.tohimher.com/discover)",
+      "Bash(curl -sI https://streakboard.tohimher.com/api/checklists)",
+      "Bash(curl -sI https://streakboard.tohimher.com/u/blue)",
+      "Bash(npm install:*)",
+      "Bash(node -e \"console.log\\(require\\('./package.json'\\).dependencies['@sentry/nextjs']\\)\")",
+      "Bash(ls next.config.*)",
+      "Bash(ls instrumentation.*)",
+      "Bash(sed -n '5,7p')",
+      "Bash(curl -sI https://streakboard.tohimher.com/sentry-test)",
+      "Bash(npx @sentry/wizard@latest -i nextjs --saas --org nil-s4 --project streakboard)",
+      "Bash(ls sentry*.ts instrumentation*.ts)",
+      "Bash(ls instrumentation*.ts sentry*.ts)"
     ]
   }
 }

@@ -6,8 +6,9 @@ if (dsn) {
   Sentry.init({
     dsn,
     tracesSampleRate: 0.1,
-    replaysSessionSampleRate: 0,
-    replaysOnErrorSampleRate: 1.0,
-    integrations: [],
+    debug: false,
   });
 }
+
+// Required export for Sentry v10 navigation instrumentation
+export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;
