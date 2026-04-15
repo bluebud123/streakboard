@@ -819,6 +819,46 @@ export default function ChecklistSection({
   // Edit mode per project (set of ids currently in edit mode)
   const [editModeIds, setEditModeIds] = useState<Set<string>>(new Set());
 
+  // Track which approval/rejection requests are in-flight (so we can show
+  // inline loading state on the Approve/Reject buttons rather than reloading
+  // the whole page).
+  const [processingRequestIds, setProcessingRequestIds] = useState<Set<string>>(new Set());
+
+  async function resolveRequest(checklistId: string, requestId: string, status: "APPROVED" | "REJECTED", username?: string) {
+    if (processingRequestIds.has(requestId)) return;
+    setProcessingRequestIds((prev) => {
+      const next = new Set(prev);
+      next.add(requestId);
+      return next;
+    });
+    try {
+      const res = await fetch("/api/checklists", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "handleProjectRequest", requestId, status }),
+      });
+      if (res.ok) {
+        if (status === "APPROVED") toast.success(`Approved @${username ?? "member"}`);
+        else toast.success("Request rejected");
+        // Optimistically remove the resolved request from the local state so
+        // the panel updates without a full page reload.
+        patchOwned(checklistId, (c) => ({
+          ...c,
+          requests: (c.requests ?? []).filter((req: { id: string }) => req.id !== requestId),
+        }));
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || "Failed to update request");
+      }
+    } finally {
+      setProcessingRequestIds((prev) => {
+        const next = new Set(prev);
+        next.delete(requestId);
+        return next;
+      });
+    }
+  }
+
   // Inline deadline editing
   const [editingDeadlineId, setEditingDeadlineId] = useState<string | null>(null);
 
@@ -1846,28 +1886,23 @@ export default function ChecklistSection({
                       <div key={r.id} className="flex items-center justify-between gap-2">
                         <span className="text-xs text-slate-300">{r.requester?.name ?? "Member"} <span className="text-slate-500">@{r.requester?.username}</span> <span className="text-[9px] text-slate-600">({r.type === "EDIT" ? "edit access" : "join"})</span></span>
                         <div className="flex gap-1">
-                          <button
-                            onClick={async () => {
-                              const res = await fetch("/api/checklists", {
-                                method: "PATCH",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ action: "handleProjectRequest", requestId: r.id, status: "APPROVED" }),
-                              });
-                              if (res.ok) { toast.success(`Approved @${r.requester?.username ?? "member"}`); window.location.reload(); }
-                            }}
-                            className="px-2 py-0.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded text-[10px] font-semibold hover:bg-emerald-500/30"
-                          >Approve</button>
-                          <button
-                            onClick={async () => {
-                              const res = await fetch("/api/checklists", {
-                                method: "PATCH",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ action: "handleProjectRequest", requestId: r.id, status: "REJECTED" }),
-                              });
-                              if (res.ok) { toast.success("Request rejected"); window.location.reload(); }
-                            }}
-                            className="px-2 py-0.5 bg-red-500/10 text-red-400 border border-red-500/20 rounded text-[10px] font-semibold hover:bg-red-500/20"
-                          >Reject</button>
+                          {(() => {
+                            const isProcessing = processingRequestIds.has(r.id);
+                            return (
+                              <>
+                                <button
+                                  disabled={isProcessing}
+                                  onClick={() => resolveRequest(cl.id, r.id, "APPROVED", r.requester?.username)}
+                                  className="px-2 py-0.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded text-[10px] font-semibold hover:bg-emerald-500/30 disabled:opacity-50 disabled:cursor-wait"
+                                >{isProcessing ? "..." : "Approve"}</button>
+                                <button
+                                  disabled={isProcessing}
+                                  onClick={() => resolveRequest(cl.id, r.id, "REJECTED", r.requester?.username)}
+                                  className="px-2 py-0.5 bg-red-500/10 text-red-400 border border-red-500/20 rounded text-[10px] font-semibold hover:bg-red-500/20 disabled:opacity-50 disabled:cursor-wait"
+                                >{isProcessing ? "..." : "Reject"}</button>
+                              </>
+                            );
+                          })()}
                         </div>
                       </div>
                     ))}
