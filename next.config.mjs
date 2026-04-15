@@ -13,14 +13,10 @@ const nextConfig = {
   },
 };
 
-// Only enable Sentry upload if DSN is configured. Without this guard,
-// every local build tries to call Sentry and warns loudly.
-const sentryEnabled = !!process.env.NEXT_PUBLIC_SENTRY_DSN;
-
-export default sentryEnabled
-  ? withSentryConfig(nextConfig, {
-      silent: true,
-      hideSourceMaps: true,
-      disableLogger: true,
-    })
-  : nextConfig;
+// Always wrap with Sentry — the SDK itself no-ops at runtime if
+// NEXT_PUBLIC_SENTRY_DSN isn't set (handled in instrumentation-client.ts).
+export default withSentryConfig(nextConfig, {
+  silent: true,
+  hideSourceMaps: true,
+  disableLogger: true,
+});
