@@ -28,6 +28,9 @@ export const metadata: Metadata = {
     description:
       "Build daily study habits and share your progress publicly — like GitHub contributions, for your goals.",
   },
+  verification: {
+    google: "QYDHNtt_lM0CVDs86HR4SNmT4T98iYRXqR-4gGT7QdY",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
