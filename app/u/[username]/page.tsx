@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { unstable_cache } from "next/cache";
 import { prisma } from "@/lib/db";
 import { auth } from "@/auth";
 import { calcStreaks, buildHeatmap, calcStudyStats } from "@/lib/streak";
@@ -10,7 +11,17 @@ import ShareBanner from "@/components/ShareBanner";
 import AppHeader from "@/components/AppHeader";
 import Link from "next/link";
 
-async function getProfile(username: string) {
+// Cache per-username profile for 60s — same data for every viewer, so safe
+// to share across requests. Tag with `profile:<username>` so we could
+// revalidate on mutations later if desired.
+const getProfile = (username: string) =>
+  unstable_cache(
+    () => _getProfileUncached(username),
+    ["profile", username],
+    { revalidate: 60, tags: [`profile:${username}`] }
+  )();
+
+async function _getProfileUncached(username: string) {
   const user = await prisma.user.findUnique({
     where: { username },
     select: {

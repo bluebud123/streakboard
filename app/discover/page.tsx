@@ -1,3 +1,4 @@
+import { unstable_cache } from "next/cache";
 import { prisma } from "@/lib/db";
 import { auth } from "@/auth";
 import AppHeader from "@/components/AppHeader";
@@ -8,27 +9,36 @@ export const metadata = {
   description: "Browse community study project templates and open collaborative projects.",
 };
 
+// Cache the public project list for 60s — viewer-specific bits (my vote,
+// joined status) are derived from session below and don't need caching.
+const getDiscoverProjects = unstable_cache(
+  async () =>
+    prisma.checklist.findMany({
+      where: { visibility: { in: ["PUBLIC_TEMPLATE", "PUBLIC_COLLAB", "PUBLIC_EDIT"] } },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        slug: true,
+        visibility: true,
+        userId: true,
+        createdAt: true,
+        user: { select: { name: true, username: true } },
+        items: { select: { id: true } },
+        participants: { select: { userId: true } },
+        likes: { select: { userId: true, type: true } },
+      },
+      orderBy: [{ likes: { _count: "desc" } }, { participants: { _count: "desc" } }, { createdAt: "desc" }],
+      take: 60,
+    }),
+  ["discover-projects"],
+  { revalidate: 60, tags: ["discover"] }
+);
+
 export default async function DiscoverPage() {
   const session = await auth();
 
-  const projects = await prisma.checklist.findMany({
-    where: { visibility: { in: ["PUBLIC_TEMPLATE", "PUBLIC_COLLAB", "PUBLIC_EDIT"] } },
-    select: {
-      id: true,
-      name: true,
-      description: true,
-      slug: true,
-      visibility: true,
-      userId: true,
-      createdAt: true,
-      user: { select: { name: true, username: true } },
-      items: { select: { id: true } },
-      participants: { select: { userId: true } },
-      likes: { select: { userId: true, type: true } },
-    },
-    orderBy: [{ likes: { _count: "desc" } }, { participants: { _count: "desc" } }, { createdAt: "desc" }],
-    take: 60,
-  });
+  const projects = await getDiscoverProjects();
 
   const viewerParticipating = session?.user?.id
     ? new Set(projects.filter((p) => p.participants.some((pt) => pt.userId === session.user!.id)).map((p) => p.id))
