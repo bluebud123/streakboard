@@ -9,17 +9,17 @@ function nestedItems(userId: string) {
     where: { parentId: null as null | string },
     orderBy: { order: "asc" as const },
     include: {
-      progress: { where: { userId } },
+      progress: { where: { userId }, select: { done: true } },
       revisions: { where: { userId }, select: { createdAt: true }, orderBy: { createdAt: "desc" as const } },
       children: {
         orderBy: { order: "asc" as const },
         include: {
-          progress: { where: { userId } },
+          progress: { where: { userId }, select: { done: true } },
           revisions: { where: { userId }, select: { createdAt: true }, orderBy: { createdAt: "desc" as const } },
           children: {
             orderBy: { order: "asc" as const },
             include: {
-              progress: { where: { userId } },
+              progress: { where: { userId }, select: { done: true } },
               revisions: { where: { userId }, select: { createdAt: true }, orderBy: { createdAt: "desc" as const } },
             },
           },
@@ -60,7 +60,16 @@ export default async function DashboardPage() {
     prisma.checkIn.findMany({
       where: { userId },
       orderBy: { date: "desc" },
-      include: { checklist: { select: { name: true } } },
+      select: {
+        id: true,
+        date: true,
+        minutes: true,
+        note: true,
+        studyTime: true,
+        createdAt: true,
+        checklistId: true,
+        checklist: { select: { name: true } },
+      },
     }),
     prisma.checklist.findMany({
       where: { userId, archivedAt: null },
@@ -71,12 +80,11 @@ export default async function DashboardPage() {
       },
       orderBy: { order: "asc" },
     }),
+    // Archived list only renders id/name/archivedAt — skip the heavy nested item
+    // tree, participants, and progress to slim payload.
     prisma.checklist.findMany({
       where: { userId, archivedAt: { not: null } },
-      include: {
-        items: nestedItems(userId),
-        participants: { include: { user: { select: { id: true, name: true, username: true } } } },
-      },
+      select: { id: true, name: true, archivedAt: true },
       orderBy: { archivedAt: "desc" },
     }),
     prisma.checklist.findMany({
@@ -132,7 +140,11 @@ export default async function DashboardPage() {
       allCheckIns={allCheckIns}
       username={(session.user as { username: string }).username}
       ownedChecklists={ownedChecklists.map(serializeChecklist) as never}
-      archivedChecklists={archivedOwnedChecklists.map(serializeChecklist) as never}
+      archivedChecklists={archivedOwnedChecklists.map((cl) => ({
+        id: cl.id,
+        name: cl.name,
+        archivedAt: cl.archivedAt ? cl.archivedAt.toISOString() : null,
+      })) as never}
       participatingChecklists={participatingChecklists as never}
       recentRequests={JSON.parse(JSON.stringify(recentRequests))}
       userId={userId}

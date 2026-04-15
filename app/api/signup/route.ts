@@ -2,8 +2,19 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import bcrypt from "bcryptjs";
 import { createAndSendVerification } from "@/lib/send-verification-email";
+import { checkRateLimit, rateLimitHeaders } from "@/lib/rateLimit";
 
 export async function POST(req: Request) {
+  // Defend signup endpoint against scripted account creation: 5 attempts /
+  // 10 min per IP. Real users will never hit this.
+  const rl = checkRateLimit(req, "signup", { limit: 5, windowMs: 10 * 60_000 });
+  if (!rl.ok) {
+    return NextResponse.json(
+      { error: `Too many signup attempts. Try again in ${rl.retryAfter}s.` },
+      { status: 429, headers: rateLimitHeaders(rl.retryAfter) }
+    );
+  }
+
   const { name, username, email, password, studyingFor, examDate } = await req.json();
 
   if (!name || !username || !email || !password || !studyingFor) {

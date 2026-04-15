@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
+import { checkRateLimit, rateLimitHeaders } from "@/lib/rateLimit";
 
 // ─── Feedback endpoint ────────────────────────────────────────────────────────
 // POST /api/feedback { category, message, contact? }
@@ -17,6 +18,14 @@ const FEEDBACK_FROM = process.env.FEEDBACK_FROM_EMAIL || "Streakboard <onboardin
 
 export async function POST(req: Request) {
   try {
+    // 3 messages / 5 min per IP — feedback is low-volume by nature.
+    const rl = checkRateLimit(req, "feedback", { limit: 3, windowMs: 5 * 60_000 });
+    if (!rl.ok) {
+      return NextResponse.json(
+        { error: `Slow down — try again in ${rl.retryAfter}s.` },
+        { status: 429, headers: rateLimitHeaders(rl.retryAfter) }
+      );
+    }
     const session = await auth();
     const body = await req.json().catch(() => ({}));
     const category: string = (body?.category ?? "general").toString().slice(0, 40);

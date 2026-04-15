@@ -1,8 +1,19 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { createAndSendVerification } from "@/lib/send-verification-email";
+import { checkRateLimit, rateLimitHeaders } from "@/lib/rateLimit";
 
 export async function POST(req: Request) {
+  // Email-verification: 10 attempts / 10 min per IP. Covers both code-check
+  // brute-force and resend abuse (which would otherwise hammer Resend).
+  const rl = checkRateLimit(req, "verify-email", { limit: 10, windowMs: 10 * 60_000 });
+  if (!rl.ok) {
+    return NextResponse.json(
+      { error: `Too many attempts. Try again in ${rl.retryAfter}s.` },
+      { status: 429, headers: rateLimitHeaders(rl.retryAfter) }
+    );
+  }
+
   const { username, code, resend } = await req.json();
 
   if (!username) {
