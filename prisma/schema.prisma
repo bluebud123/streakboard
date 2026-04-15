@@ -67,6 +67,9 @@ model Checklist {
   requests     ProjectRequest[]
   checkIns     CheckIn[]
   likes        ChecklistLike[]
+
+  @@index([userId, archivedAt])
+  @@index([visibility, createdAt])
 }
 
 model ChecklistItem {
@@ -117,6 +120,8 @@ model ProjectRequest {
 
   @@index([checklistId])
   @@index([requesterId])
+  @@index([checklistId, type, status])
+  @@index([requesterId, status, dismissedAt])
 }
 
 model ChecklistParticipant {
@@ -142,6 +147,8 @@ model ChecklistProgress {
   doneAt DateTime?
 
   @@unique([itemId, userId])
+  @@index([userId, done])
+  @@index([itemId, done])
 }
 
 model ChecklistRevision {
