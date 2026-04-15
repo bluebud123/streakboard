@@ -75,10 +75,14 @@ export async function generateMetadata({ params }: { params: Promise<{ username:
   const { username } = await params;
   try {
     const profile = await getProfile(username);
-    if (!profile) return { title: "Profile not found — Streakboard" };
+    if (!profile) return { title: "Profile not found" };
+    const title = `${profile.name} — ${profile.streaks.currentStreak} day streak`;
+    const description = `${profile.name} is studying for ${profile.studyingFor}. ${profile.streaks.currentStreak} day streak, ${profile.streaks.totalDays} days logged.`;
     return {
-      title: `${profile.name} — ${profile.streaks.currentStreak} day streak | Streakboard`,
-      description: `${profile.name} is studying for ${profile.studyingFor}. ${profile.streaks.currentStreak} day streak, ${profile.streaks.totalDays} days logged.`,
+      title,
+      description,
+      openGraph: { title, description, type: "profile", username: profile.username },
+      twitter: { card: "summary_large_image", title, description },
     };
   } catch {
     return { title: "Streakboard" };

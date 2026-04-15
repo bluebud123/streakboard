@@ -1,9 +1,37 @@
 import { notFound } from "next/navigation";
+import type { Metadata } from "next";
 import { prisma } from "@/lib/db";
 import { auth } from "@/auth";
 import Link from "next/link";
 import AppHeader from "@/components/AppHeader";
 import PublicProjectClient from "./PublicProjectClient";
+
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const { slug } = await params;
+  const cl = await prisma.checklist.findUnique({
+    where: { slug },
+    select: {
+      name: true,
+      description: true,
+      visibility: true,
+      user: { select: { name: true, username: true } },
+      _count: { select: { items: true, participants: true } },
+    },
+  });
+  if (!cl || cl.visibility === "PRIVATE" || cl.visibility === "PRIVATE_COLLAB") {
+    return { title: "Project not found" };
+  }
+  const title = `${cl.name} by @${cl.user.username}`;
+  const description =
+    cl.description ??
+    `${cl._count.items} tasks · ${cl._count.participants} participants · shared by ${cl.user.name}`;
+  return {
+    title,
+    description,
+    openGraph: { title, description, type: "article" },
+    twitter: { card: "summary_large_image", title, description },
+  };
+}
 
 // Flatten a nested item tree to get all checkable (non-section) items
 type NestedItem = {

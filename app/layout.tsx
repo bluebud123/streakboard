@@ -4,10 +4,30 @@ import SessionProvider from "@/components/SessionProvider";
 import SiteFooter from "@/components/SiteFooter";
 import { Toaster } from "sonner";
 
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://streakboard.tohimher.com";
+
 export const metadata: Metadata = {
-  title: "Streakboard — Track your learning. Share your streak.",
+  metadataBase: new URL(siteUrl),
+  title: {
+    default: "Streakboard — Track your learning. Share your streak.",
+    template: "%s — Streakboard",
+  },
   description:
-    "Build daily study habits and share your progress publicly — like GitHub, for your goals.",
+    "Build daily study habits and share your progress publicly — like GitHub contributions, for your goals.",
+  openGraph: {
+    type: "website",
+    siteName: "Streakboard",
+    title: "Streakboard — Track your learning. Share your streak.",
+    description:
+      "Build daily study habits and share your progress publicly — like GitHub contributions, for your goals.",
+    url: siteUrl,
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Streakboard — Track your learning. Share your streak.",
+    description:
+      "Build daily study habits and share your progress publicly — like GitHub contributions, for your goals.",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
