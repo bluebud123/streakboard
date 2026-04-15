@@ -359,19 +359,27 @@ function ItemNode({
 
   if (item.isSection) {
     return (
-      <div data-item-id={item.id} className={`mt-6 first:mt-0 transition-all ${isDragOver ? "ring-2 ring-amber-500 rounded-lg bg-amber-500/5" : ""}`}>
-        <div className={`flex items-center gap-2 py-2 px-1 group transition-opacity ${isDragging ? "opacity-40" : ""}`} {...commonProps}>
-          {/* Collapse toggle */}
-          <button
-            onClick={() => onToggleCollapse(item.id)}
-            className="text-slate-500 hover:text-white transition-all w-5 h-5 flex items-center justify-center rounded hover:bg-slate-800"
-          >
+      <div data-item-id={item.id} className={`mt-5 first:mt-0 transition-all ${isDragOver ? "ring-2 ring-amber-500 rounded-lg bg-amber-500/5" : ""}`}>
+        <div
+          className={`flex items-center gap-2 py-1.5 px-1 group transition-opacity rounded-lg ${isDragging ? "opacity-40" : ""} ${isEditing ? "" : "cursor-pointer hover:bg-slate-800/40 active:bg-slate-800/60"}`}
+          {...commonProps}
+          onClick={(e) => {
+            if (isEditing) return;
+            // Ignore clicks on buttons / inputs / drag handles
+            const target = e.target as HTMLElement;
+            if (target.closest("button, input, a")) return;
+            onToggleCollapse(item.id);
+          }}
+          title={isEditing ? undefined : (isCollapsed ? "Tap to expand" : "Tap to collapse")}
+        >
+          {/* Collapse indicator */}
+          <span className="text-slate-500 group-hover:text-slate-300 transition-all w-5 h-5 flex items-center justify-center shrink-0 select-none">
             {isCollapsed ? "▸" : "▾"}
-          </button>
+          </span>
 
           {canDelete && <span className="text-slate-700 hover:text-slate-400 text-base leading-none cursor-grab active:cursor-grabbing shrink-0 transition-colors hidden lg:block select-none">⠿</span>}
 
-          {/* Section text — double-click to edit */}
+          {/* Section text — pencil to edit */}
           {isEditing ? (
             <input
               autoFocus
@@ -382,14 +390,11 @@ function ItemNode({
                 if (e.key === "Escape") onEditCancel();
               }}
               onBlur={() => onEditSave(checklistId, item.id)}
+              onClick={(e) => e.stopPropagation()}
               className="flex-1 bg-slate-800 border border-amber-500 rounded-lg px-2 py-0.5 text-xs font-black text-amber-500 uppercase tracking-[0.15em] focus:outline-none focus:ring-1 focus:ring-amber-500/30"
             />
           ) : (
-            <span
-              className="flex-1 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] cursor-default group-hover:text-slate-300 transition-colors"
-              onDoubleClick={() => canEdit && onEditStart(item.id, item.text)}
-              title={canEdit ? "Double-click to rename section" : undefined}
-            >
+            <span className="flex-1 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] select-none group-hover:text-slate-300 transition-colors">
               {item.text}
             </span>
           )}
@@ -430,7 +435,7 @@ function ItemNode({
 
         {/* Children */}
         {!isCollapsed && (
-          <div className="ml-2 space-y-0.5 border-l-2 border-slate-800/50 pl-5 mb-4 mt-1">
+          <div className="ml-1 lg:ml-2 space-y-0.5 border-l-2 border-slate-800/50 pl-2.5 lg:pl-5 mb-4 mt-1">
             {item.children?.map((child) => (
               <ItemNode key={child.id} item={child} checklistId={checklistId} canEdit={canEdit} canDelete={canDelete} canCheck={canCheck}
                 collapsedIds={collapsedIds} onToggleCollapse={onToggleCollapse}
@@ -467,11 +472,11 @@ function ItemNode({
   }
 
   // ── Task / Subtask ────────────────────────────────────────────────────────
-  const indent = item.depth === 2 ? "ml-6" : "";
+  const indent = item.depth === 2 ? "ml-3 lg:ml-6" : "";
 
   return (
     <div data-item-id={item.id} className={`${indent} transition-all ${isDragOver ? "border-t-2 border-amber-500 bg-amber-500/5 rounded" : ""}`}>
-      <div className={`flex items-center gap-2 group py-1.5 px-1 rounded-lg hover:bg-slate-800/40 transition-colors ${isDragging ? "opacity-40" : ""}`} {...commonProps}>
+      <div className={`flex items-center gap-2 group py-1 px-1 rounded-lg hover:bg-slate-800/40 transition-colors ${isDragging ? "opacity-40" : ""}`} {...commonProps}>
         {/* Collapse (only tasks with children) */}
         {hasChildren ? (
           <button onClick={() => onToggleCollapse(item.id)} className="text-slate-600 hover:text-white transition-all w-4 h-4 flex items-center justify-center rounded">
@@ -594,7 +599,7 @@ function ItemNode({
 
       {/* Subtask children */}
       {!isCollapsed && item.depth < 2 && (
-        <div className="ml-9 space-y-0.5 mt-1 border-l border-slate-800 pl-4 mb-2">
+        <div className="ml-5 lg:ml-9 space-y-0.5 mt-1 border-l border-slate-800 pl-2 lg:pl-4 mb-2">
           {item.children?.map((child) => (
             <ItemNode key={child.id} item={child} checklistId={checklistId} canEdit={canEdit} canDelete={canDelete} canCheck={canCheck}
               collapsedIds={collapsedIds} onToggleCollapse={onToggleCollapse}
