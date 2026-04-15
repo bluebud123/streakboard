@@ -27,7 +27,12 @@
       "Bash(curl -sI https://streakboard.tohimher.com/sentry-test)",
       "Bash(npx @sentry/wizard@latest -i nextjs --saas --org nil-s4 --project streakboard)",
       "Bash(ls sentry*.ts instrumentation*.ts)",
-      "Bash(ls instrumentation*.ts sentry*.ts)"
+      "Bash(ls instrumentation*.ts sentry*.ts)",
+      "Bash(curl -s https://streakboard.tohimher.com/sentry-test)",
+      "Read(//tmp/**)",
+      "Bash(awk 'NR>=6 && NR<=7')",
+      "Bash(awk 'NR==7')",
+      "Bash(curl -s https://streakboard.tohimher.com/_next/static/chunks/main-app-0189b414ac9e0b5b.js)"
     ]
   }
 }
