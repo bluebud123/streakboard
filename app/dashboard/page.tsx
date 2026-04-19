@@ -1,8 +1,60 @@
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
+import { unstable_cache } from "next/cache";
 import { prisma } from "@/lib/db";
 import { calcStreaks, localDateKey } from "@/lib/streak";
 import DashboardClient from "./DashboardClient";
+
+// Cached reads — pure string / primitive shapes only so unstable_cache's JSON
+// serialization doesn't mangle Date objects. Busted by revalidateTag() in
+// the mutation routes (api/checkin, api/checklists).
+const getCheckInDates = (userId: string) =>
+  unstable_cache(
+    async () => {
+      const rows = await prisma.checkIn.findMany({
+        where: { userId },
+        select: { date: true },
+        orderBy: { date: "desc" },
+      });
+      return rows.map((r) => r.date);
+    },
+    ["checkin-dates", userId],
+    { tags: [`checkins:${userId}`], revalidate: 30 }
+  )();
+
+const getArchivedChecklists = (userId: string) =>
+  unstable_cache(
+    async () => {
+      const rows = await prisma.checklist.findMany({
+        where: { userId, archivedAt: { not: null } },
+        select: { id: true, name: true, archivedAt: true },
+        orderBy: { archivedAt: "desc" },
+      });
+      return rows.map((cl) => ({
+        id: cl.id,
+        name: cl.name,
+        archivedAt: cl.archivedAt ? cl.archivedAt.toISOString() : null,
+      }));
+    },
+    ["archived-checklists", userId],
+    { tags: [`checklists:${userId}`], revalidate: 30 }
+  )();
+
+const getRecentRequests = (userId: string) =>
+  unstable_cache(
+    async () => {
+      const rows = await prisma.projectRequest.findMany({
+        where: { requesterId: userId, status: { not: "PENDING" }, dismissedAt: null },
+        include: { checklist: { select: { name: true } } },
+        orderBy: { createdAt: "desc" },
+        take: 5,
+      });
+      // Pre-serialize so downstream code doesn't hit Date instances.
+      return JSON.parse(JSON.stringify(rows));
+    },
+    ["recent-requests", userId],
+    { tags: [`checklists:${userId}`], revalidate: 30 }
+  )();
 
 function nestedItems(userId: string) {
   return {
@@ -116,13 +168,9 @@ export default async function DashboardPage() {
       },
     }),
     // Separate lightweight query of ALL check-in dates — used only for
-    // currentStreak / longestStreak / totalDays. Keeping this unbounded (but
-    // tiny per row) so accurate streaks survive the 365-day payload cap above.
-    prisma.checkIn.findMany({
-      where: { userId },
-      select: { date: true },
-      orderBy: { date: "desc" },
-    }),
+    // currentStreak / longestStreak / totalDays. Cached via unstable_cache
+    // (string-only payload, busted by revalidateTag on checkin writes).
+    getCheckInDates(userId),
     prisma.checklist.findMany({
       where: { userId, archivedAt: null },
       include: {
@@ -132,13 +180,9 @@ export default async function DashboardPage() {
       },
       orderBy: { order: "asc" },
     }),
-    // Archived list only renders id/name/archivedAt — skip the heavy nested item
-    // tree, participants, and progress to slim payload.
-    prisma.checklist.findMany({
-      where: { userId, archivedAt: { not: null } },
-      select: { id: true, name: true, archivedAt: true },
-      orderBy: { archivedAt: "desc" },
-    }),
+    // Archived list only renders id/name/archivedAt — cached, string-only
+    // payload, busted by revalidateTag on checklist writes.
+    getArchivedChecklists(userId),
     prisma.checklist.findMany({
       where: { participants: { some: { userId } }, userId: { not: userId } },
       include: {
@@ -148,15 +192,8 @@ export default async function DashboardPage() {
       },
       orderBy: { createdAt: "desc" },
     }),
-    // Only pull notifications the user hasn't already dismissed. Before this,
-    // resolved requests kept reappearing after every reload because
-    // `dismissedAt` was set server-side but never filtered on read.
-    prisma.projectRequest.findMany({
-      where: { requesterId: userId, status: { not: "PENDING" }, dismissedAt: null },
-      include: { checklist: { select: { name: true } } },
-      orderBy: { createdAt: "desc" },
-      take: 5,
-    }),
+    // Recent non-PENDING requests (notifications). Cached + pre-serialized.
+    getRecentRequests(userId),
   ]);
 
   if (!user) redirect("/login");
@@ -180,9 +217,9 @@ export default async function DashboardPage() {
   }
 
   // Streaks pull from the unbounded dates-only query so they remain accurate
-  // even though `checkIns` above is capped at 12 months.
-  const dates = allCheckInDates.map((c) => c.date);
-  const streaks = calcStreaks(dates);
+  // even though `checkIns` above is capped at 12 months. getCheckInDates()
+  // now returns a flat string[] (cached-friendly shape).
+  const streaks = calcStreaks(allCheckInDates);
   const today = localDateKey(new Date());
 
   // Serialize DateTime → ISO string for client component
@@ -215,11 +252,7 @@ export default async function DashboardPage() {
       allCheckIns={allCheckIns}
       username={(session.user as { username: string }).username}
       ownedChecklists={ownedChecklists.map(serializeChecklist) as never}
-      archivedChecklists={archivedOwnedChecklists.map((cl) => ({
-        id: cl.id,
-        name: cl.name,
-        archivedAt: cl.archivedAt ? cl.archivedAt.toISOString() : null,
-      })) as never}
+      archivedChecklists={archivedOwnedChecklists as never}
       participatingChecklists={
         // Compute viewerCanEdit per-project from the viewer's participant row
         // so <ChecklistSection /> can flip "Request edit" → "Edit" immediately
@@ -230,7 +263,7 @@ export default async function DashboardPage() {
           viewerCanEdit: !!cl.participants?.find((p: any) => p.userId === userId)?.canEdit,
         })) as never
       }
-      recentRequests={JSON.parse(JSON.stringify(recentRequests))}
+      recentRequests={recentRequests}
       userId={userId}
     />
   );

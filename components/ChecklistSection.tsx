@@ -1863,6 +1863,24 @@ export default function ChecklistSection({
                     </span>
                   )}
 
+                  {/* Visible rename affordance — double-click on the title
+                      also works, but a discoverable button is needed on mobile
+                      and for users who never learn the double-click gesture. */}
+                  {cl.isOwner && editingTitleId !== cl.id && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingTitleId(cl.id);
+                        setEditingTitleText(cl.name);
+                      }}
+                      className="shrink-0 text-[11px] text-slate-500 hover:text-amber-400 transition-colors p-1 -mx-1 leading-none"
+                      title="Rename project"
+                      aria-label="Rename project"
+                    >
+                      ✏️
+                    </button>
+                  )}
+
                   <span className="text-xs font-mono text-slate-500 shrink-0">{done}/{total}</span>
 
                   {/* Drag handle for card reorder */}

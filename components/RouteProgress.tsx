@@ -70,10 +70,10 @@ export default function RouteProgress() {
   return (
     <div
       aria-hidden
-      className="fixed top-0 left-0 right-0 z-[60] h-0.5 pointer-events-none"
+      className="fixed top-0 left-0 right-0 z-[60] h-[3px] pointer-events-none"
     >
       <div
-        className="h-full bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.6)] transition-[width] ease-out"
+        className="h-full bg-gradient-to-r from-amber-500 via-amber-300 to-amber-500 shadow-[0_0_12px_rgba(245,158,11,0.9)] transition-[width] ease-out"
         style={{
           width: `${progress}%`,
           transitionDuration: progress === 100 ? "200ms" : "300ms",

@@ -12,6 +12,16 @@ export interface TemplateMetadata {
 
 const TEMPLATES: TemplateMetadata[] = [
   {
+    id: "mbbs-universiti-malaya",
+    title: "MBBS (Universiti Malaya)",
+    category: "Medicine",
+    description:
+      "5-year MBBS study plan structured around UM's three-phase MBBS programme — pre-clinical systems, para-clinical, and senior clinical postings.",
+    filename: "mbbs-universiti-malaya.md",
+    itemCount: 58,
+    contributor: "blue",
+  },
+  {
     id: "orthopaedic-surgery",
     title: "Orthopaedic Surgery Fellowship Exam",
     category: "Medicine",

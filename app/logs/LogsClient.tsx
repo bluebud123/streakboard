@@ -44,6 +44,9 @@ export default function LogsClient({ initialLogs }: Props) {
 
   // Revalidate from the server on mount. The cache may be stale or missing
   // (first visit, cross-tab edits) — fetch in the background and overwrite.
+  // Track loading so a cold first visit (no cache) shows a skeleton rather
+  // than an empty-state flash.
+  const [loading, setLoading] = useState(logs.length === 0);
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -55,6 +58,7 @@ export default function LogsClient({ initialLogs }: Props) {
         setLogs(data);
         try { sessionStorage.setItem(LOGS_CACHE_KEY, JSON.stringify(data)); } catch {}
       } catch {}
+      finally { if (!cancelled) setLoading(false); }
     })();
     return () => { cancelled = true; };
   }, []);
@@ -289,6 +293,23 @@ export default function LogsClient({ initialLogs }: Props) {
           </Link>
         </div>
         <h1 className="text-2xl font-bold text-slate-100 mb-4">All Logs</h1>
+
+        {/* Cold-visit skeleton — shown only when the cache is empty AND the
+            first /api/checkin fetch is still in-flight. Keeps the page from
+            feeling blank on a fresh session. */}
+        {loading && logs.length === 0 && (
+          <div className="space-y-3 animate-pulse">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <div key={i} className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="h-4 w-24 bg-slate-800 rounded" />
+                  <div className="h-4 w-16 bg-slate-800/60 rounded" />
+                </div>
+                <div className="h-3 w-3/4 bg-slate-800/60 rounded" />
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* 3 Tabs */}
         <div className="flex gap-1 mb-5 bg-slate-900 border border-slate-800 rounded-xl p-1">

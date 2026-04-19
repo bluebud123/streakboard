@@ -1,7 +1,15 @@
 import { NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { localDateKey } from "@/lib/streak";
+
+// Dashboard caches getCheckInDates() with tag `checkins:${userId}`. Every
+// mutation that changes the check-in set must call this so streaks and
+// "active days" update on the next dashboard render.
+function bustCheckIns(userId: string) {
+  try { revalidateTag(`checkins:${userId}`); } catch {}
+}
 
 function serializeCheckIn(c: any) {
   return {
@@ -41,6 +49,7 @@ export async function POST(req: Request) {
     include: { checklist: { select: { name: true } } },
   });
 
+  bustCheckIns(session.user.id);
   return NextResponse.json(serializeCheckIn(checkIn));
 }
 
@@ -67,6 +76,7 @@ export async function PATCH(req: Request) {
     include: { checklist: { select: { name: true } } },
   });
 
+  bustCheckIns(session.user.id);
   return NextResponse.json(serializeCheckIn(updated));
 }
 
@@ -84,6 +94,7 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   await prisma.checkIn.delete({ where: { id } });
+  bustCheckIns(session.user.id);
   return NextResponse.json({ ok: true });
 }
 

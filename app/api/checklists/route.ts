@@ -1,7 +1,15 @@
 import { NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { customAlphabet } from "nanoid";
+
+// Called after every write to bust the cached dashboard reads. Dashboard
+// queries (archived list, recent requests) are tagged `checklists:${userId}`
+// so one call here keeps the dashboard in sync.
+function bustChecklists(userId: string) {
+  try { revalidateTag(`checklists:${userId}`); } catch {}
+}
 
 const nanoid = customAlphabet("abcdefghijklmnopqrstuvwxyz0123456789", 6);
 
@@ -415,6 +423,7 @@ export async function PATCH(req: Request) {
     const cl = await prisma.checklist.findUnique({ where: { id: checklistId } });
     if (!cl || cl.userId !== userId) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     const updated = await prisma.checklist.update({ where: { id: checklistId }, data: { name: name.trim() } });
+    bustChecklists(userId);
     return NextResponse.json(updated);
   }
 
@@ -544,6 +553,7 @@ export async function PATCH(req: Request) {
     const cl = await prisma.checklist.findUnique({ where: { id: checklistId } });
     if (!cl || cl.userId !== userId) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     await prisma.checklist.delete({ where: { id: checklistId } });
+    bustChecklists(userId);
     return NextResponse.json({ ok: true });
   }
 
@@ -553,6 +563,7 @@ export async function PATCH(req: Request) {
     const cl = await prisma.checklist.findUnique({ where: { id: checklistId } });
     if (!cl || cl.userId !== userId) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     await prisma.checklist.update({ where: { id: checklistId }, data: { archivedAt: new Date() } });
+    bustChecklists(userId);
     return NextResponse.json({ ok: true });
   }
 
@@ -562,6 +573,7 @@ export async function PATCH(req: Request) {
     const cl = await prisma.checklist.findUnique({ where: { id: checklistId } });
     if (!cl || cl.userId !== userId) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     await prisma.checklist.update({ where: { id: checklistId }, data: { archivedAt: null } });
+    bustChecklists(userId);
     return NextResponse.json({ ok: true });
   }
 
@@ -746,11 +758,13 @@ export async function PATCH(req: Request) {
         where: { requesterId: userId, status: { not: "PENDING" }, dismissedAt: null },
         data: { dismissedAt: new Date() },
       });
+      bustChecklists(userId);
       return NextResponse.json({ ok: true });
     }
     const req = await prisma.projectRequest.findUnique({ where: { id: requestId } });
     if (!req || req.requesterId !== userId) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     await prisma.projectRequest.update({ where: { id: requestId }, data: { dismissedAt: new Date() } });
+    bustChecklists(userId);
     return NextResponse.json({ ok: true });
   }
 

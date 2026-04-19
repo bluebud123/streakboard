@@ -323,6 +323,14 @@ export default function DashboardClient({
   useEffect(() => {
     try { sessionStorage.setItem("streakboard:logs:v1", JSON.stringify(allCheckIns)); } catch {}
   }, [allCheckIns]);
+
+  // Warm the browser's HTTP cache for /api/checkin so when the user
+  // navigates to /logs, the revalidate fetch is usually already complete.
+  // This runs once and does not block render.
+  useEffect(() => {
+    const t = setTimeout(() => { fetch("/api/checkin").catch(() => {}); }, 1500);
+    return () => clearTimeout(t);
+  }, []);
   const [currentStreak, setCurrentStreak] = useState(streaks.currentStreak);
   // Log form
   const [newNote, setNewNote] = useState("");
