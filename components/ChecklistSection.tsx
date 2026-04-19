@@ -36,7 +36,7 @@ export interface ChecklistData {
   archivedAt?: string | null;
   order?: number;
   items: TreeItem[];
-  participants: { user: { id: string; name: string; username: string } }[];
+  participants: { canEdit?: boolean; user: { id: string; name: string; username: string } }[];
   user?: { name: string; username: string };
   requests?: { id: string; type: string; status: string; requester?: { name: string; username: string } }[];
   viewerCanEdit?: boolean;
@@ -854,6 +854,28 @@ export default function ChecklistSection({
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, [router]);
+
+  async function revokeEdit(checklistId: string, participantUserId: string, username?: string) {
+    if (!confirm(`Revoke edit access from @${username ?? "this member"}? They can still view and track their own progress.`)) return;
+    const res = await fetch("/api/checklists", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "revokeEdit", checklistId, participantUserId }),
+    });
+    if (res.ok) {
+      toast.success(`Edit access revoked from @${username ?? "member"}`);
+      // Optimistic local patch so the editor list updates without a full RSC round-trip.
+      patchOwned(checklistId, (c) => ({
+        ...c,
+        participants: (c.participants ?? []).map((p: any) =>
+          p.user.id === participantUserId ? { ...p, canEdit: false } : p
+        ),
+      }));
+    } else {
+      const data = await res.json().catch(() => ({}));
+      toast.error(data.error || "Failed to revoke");
+    }
+  }
 
   async function resolveRequest(checklistId: string, requestId: string, status: "APPROVED" | "REJECTED", username?: string) {
     if (processingRequestIds.has(requestId)) return;
@@ -1983,6 +2005,35 @@ export default function ChecklistSection({
                   </div>
                 </div>
               )}
+
+              {/* Current editors — owner can revoke edit access granted earlier.
+                  Only shown for owned PUBLIC_COLLAB/EDIT projects where at least
+                  one non-owner participant has canEdit=true. */}
+              {cl.isOwner && (cl.visibility === "PUBLIC_COLLAB" || cl.visibility === "PUBLIC_EDIT") && (() => {
+                const editors = (cl.participants ?? []).filter(
+                  (p: any) => p.canEdit && p.user.id !== cl.userId
+                );
+                if (editors.length === 0) return null;
+                return (
+                  <div className="px-4 pb-2">
+                    <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-2.5 space-y-1.5">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Editors</p>
+                      {editors.map((p: any) => (
+                        <div key={p.user.id} className="flex items-center justify-between gap-2">
+                          <span className="text-xs text-slate-300">
+                            {p.user.name} <span className="text-slate-500">@{p.user.username}</span>
+                          </span>
+                          <button
+                            onClick={() => revokeEdit(cl.id, p.user.id, p.user.username)}
+                            className="px-2 py-0.5 bg-red-500/10 text-red-400 border border-red-500/20 rounded text-[10px] font-semibold hover:bg-red-500/20"
+                            title="Remove edit access"
+                          >Revoke</button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Overall progress bar */}
               <div className="px-4 pb-4">

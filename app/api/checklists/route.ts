@@ -637,6 +637,30 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ ok: true });
   }
 
+  // ── revokeEdit (owner removes edit access from a participant) ────────────
+  // Sets canEdit=false — participant stays in the project (can still view +
+  // track personal progress) but loses write access to the checklist tree.
+  if (action === "revokeEdit") {
+    const { checklistId, participantUserId } = body;
+    const cl = await prisma.checklist.findUnique({ where: { id: checklistId }, select: { userId: true } });
+    if (!cl) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    if (cl.userId !== userId) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    if (participantUserId === userId) {
+      return NextResponse.json({ error: "Owner always has edit access" }, { status: 400 });
+    }
+    const updated = await prisma.checklistParticipant.updateMany({
+      where: { checklistId, userId: participantUserId },
+      data: { canEdit: false },
+    });
+    // Also clear any lingering PENDING edit requests so the requester's
+    // "pending" badge doesn't get stuck after a revoke+re-request cycle.
+    await prisma.projectRequest.updateMany({
+      where: { checklistId, requesterId: participantUserId, type: "EDIT", status: "PENDING" },
+      data: { status: "REJECTED", message: "Edit access revoked by owner" },
+    });
+    return NextResponse.json({ ok: true, revoked: updated.count });
+  }
+
   // ── handleProjectRequest ──────────────────────────────────────────────────
   if (action === "handleProjectRequest") {
     const { requestId, status, message } = body;

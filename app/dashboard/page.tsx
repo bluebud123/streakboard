@@ -145,7 +145,16 @@ export default async function DashboardPage() {
         name: cl.name,
         archivedAt: cl.archivedAt ? cl.archivedAt.toISOString() : null,
       })) as never}
-      participatingChecklists={participatingChecklists as never}
+      participatingChecklists={
+        // Compute viewerCanEdit per-project from the viewer's participant row
+        // so <ChecklistSection /> can flip "Request edit" → "Edit" immediately
+        // after the owner approves. Without this, the field stays undefined and
+        // the button never changes even on a full page reload.
+        participatingChecklists.map((cl: any) => ({
+          ...cl,
+          viewerCanEdit: !!cl.participants?.find((p: any) => p.userId === userId)?.canEdit,
+        })) as never
+      }
       recentRequests={JSON.parse(JSON.stringify(recentRequests))}
       userId={userId}
     />

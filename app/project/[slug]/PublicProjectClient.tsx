@@ -224,7 +224,7 @@ function ItemNode({
         )}
       </div>
 
-      {item.children.length > 0 && (
+      {(item.children.length > 0 || (editMode && canEdit && addingTo?.parentId === item.id)) && (
         <div className="ml-7 space-y-0.5 mt-0.5">
           {item.children.map((sub) => (
             <ItemNode key={sub.id} item={sub} parentId={item.id}
@@ -235,6 +235,10 @@ function ItemNode({
               dragId={dragId} dragOverId={dragOverId}
             />
           ))}
+          {/* Subtask input — also mounts when the parent has NO children yet.
+              Previously this block was gated solely on `item.children.length > 0`,
+              so clicking "+ subtask" on a childless item hid the button without
+              ever mounting the input. */}
           {editMode && canEdit && addingTo?.parentId === item.id && (
             <div className="flex gap-2 mt-1">
               <input autoFocus value={newItemText} onChange={(e) => onNewItemChange(e.target.value)}

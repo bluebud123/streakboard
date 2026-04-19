@@ -434,7 +434,10 @@ export default function DashboardClient({
   const shareLabel = isProjectShareable ? selectedProject!.name : `@${username}`;
   const shareHref = isProjectShareable ? `/project/${selectedProject!.slug}` : `/u/${username}`;
 
-  const leaderboardBlock = selectedProgress && selectedProgress.overall.length > 1 ? (
+  // Show leaderboard whenever a project is selected and anyone has progress.
+  // Previously gated on `.length > 1`, which hid it for solo-public projects
+  // and confused users who expected to see their own entry.
+  const leaderboardBlock = selectedProgress && selectedProgress.overall.length > 0 ? (
     <Leaderboard progress={selectedProgress} currentUserId={userId} />
   ) : null;
 
@@ -543,6 +546,61 @@ export default function DashboardClient({
     }
     return <StatCard label="Days logged" value={`${streaks.totalDays}`} icon="📅" />;
   })();
+
+  // Upcoming-deadlines row for the Home tab. Takes the 3 soonest deadlines
+  // across owned + participating projects (skipping past-due >30d) so users
+  // can see what's next at a glance without drilling into Projects.
+  const upcomingDeadlines = allProjects
+    .filter((p) => p.deadline)
+    .map((p) => ({
+      id: p.id,
+      name: p.name,
+      slug: p.slug,
+      daysLeft: Math.ceil((new Date(p.deadline!).getTime() - Date.now()) / 86400000),
+    }))
+    .filter((p) => p.daysLeft > -30)
+    .sort((a, b) => a.daysLeft - b.daysLeft)
+    .slice(0, 3);
+
+  const upcomingDeadlinesBlock = upcomingDeadlines.length > 0 ? (
+    <section className="bg-gradient-to-br from-slate-900 to-slate-900/40 border border-slate-800 rounded-2xl p-4">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Upcoming deadlines</h3>
+        <span className="text-[10px] text-slate-600">{upcomingDeadlines.length} {upcomingDeadlines.length === 1 ? "project" : "projects"}</span>
+      </div>
+      <ul className="space-y-2">
+        {upcomingDeadlines.map((p) => {
+          const overdue = p.daysLeft < 0;
+          const urgent = p.daysLeft >= 0 && p.daysLeft <= 7;
+          const tone = overdue
+            ? "bg-red-500/10 border-red-500/30 text-red-400"
+            : urgent
+              ? "bg-amber-500/10 border-amber-500/30 text-amber-400"
+              : "bg-slate-800/60 border-slate-700 text-slate-300";
+          const label = overdue
+            ? `${Math.abs(p.daysLeft)}d overdue`
+            : p.daysLeft === 0
+              ? "today"
+              : `${p.daysLeft}d left`;
+          const handleClick = () => {
+            setExpandedProjectId(p.id);
+            setMobileTab("projects");
+          };
+          return (
+            <li key={p.id}>
+              <button
+                onClick={handleClick}
+                className={`w-full flex items-center justify-between gap-3 px-3 py-2 rounded-xl border transition-all ${tone} hover:brightness-110`}
+              >
+                <span className="text-sm font-medium truncate min-w-0 text-left">{p.name}</span>
+                <span className="text-[10px] font-black uppercase tracking-wider shrink-0">{label}</span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  ) : null;
 
   const allSessionProjects = [...ownedState, ...participatingState];
 
@@ -714,6 +772,8 @@ export default function DashboardClient({
               <StatCard label="Longest" value={`${streaks.longestStreak}d`} icon="🏆" />
               {deadlineStatCard}
             </div>
+            {/* Upcoming deadlines — top 3 across owned + participating */}
+            {upcomingDeadlinesBlock}
             {/* Log today */}
             {logSection}
             {reviewedTodayBlock}
@@ -764,6 +824,13 @@ export default function DashboardClient({
               onSectionClick={handleSectionClick}
               onCountdownClick={(id) => { setExpandedProjectId(id); setMobileTab("projects"); }} />
             {leaderboardBlock}
+            {/* Hint the leaderboard source when nothing is picked yet — a
+                selected shared project slots its leaderboard in above. */}
+            {!leaderboardBlock && allProjects.some((p) => p.visibility === "PUBLIC_COLLAB" || p.visibility === "PUBLIC_EDIT") && (
+              <p className="text-xs text-slate-600 italic text-center py-1">
+                Tap a shared project above to see its leaderboard.
+              </p>
+            )}
             {projectRequestsBlock}
             {shareCard}
           </div>
@@ -806,6 +873,7 @@ export default function DashboardClient({
         <aside className="space-y-4 sticky top-[73px] max-h-[calc(100vh-90px)] overflow-y-auto pb-4 pr-1 scrollbar-hide">
           {streakBadge}
           <MiniCalendar checkIns={allCheckIns} reviewsByDate={reviewsByDate} defaultDate={todayKey} />
+          {upcomingDeadlinesBlock}
           {reviewedTodayBlock}
           {todayLogs.length > 0 && (
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
