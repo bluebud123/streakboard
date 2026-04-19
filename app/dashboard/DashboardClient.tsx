@@ -742,23 +742,36 @@ export default function DashboardClient({
       </header>
 
       {/* ── Mobile header ──────────────────────────────────────────────────── */}
-      <header className="lg:hidden sticky top-0 z-40 bg-slate-950/95 backdrop-blur-md border-b border-slate-800/60 px-4 py-3 flex items-center justify-between">
-        <div>
-          <p className="text-xs text-slate-500 font-medium">Hey, {user.name.split(" ")[0]} 👋</p>
-          <div className="flex items-center gap-2 mt-0.5">
-            <span className="text-amber-400 font-black text-lg leading-none">{currentStreak}</span>
-            <span className="text-slate-400 text-xs">🔥 day streak</span>
-            {examDays !== null && (
-              <span className={`text-xs font-semibold ml-1 ${examDays <= 30 ? "text-red-400" : "text-slate-500"}`}>· {examDays}d left</span>
-            )}
+      {/* Mobile header. Streakboard brand stays at top on every screen (user
+          asked for consistent branding). Sign-out is included here because
+          the mobile bottom nav doesn't have space for it. */}
+      <header className="lg:hidden sticky top-0 z-40 bg-slate-950/95 backdrop-blur-md border-b border-slate-800/60 px-4 py-2.5">
+        <div className="flex items-center justify-between">
+          <Link href="/dashboard" className="text-lg font-black text-amber-500 hover:text-amber-400 tracking-tight">
+            Streakboard
+          </Link>
+          <div className="flex items-center gap-2">
+            {user.isAdmin && <Link href="/admin" className="text-[10px] text-amber-500 font-semibold uppercase tracking-wider">Admin</Link>}
+            <Link href="/settings" className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-800 text-slate-400 hover:text-white transition-colors text-sm" aria-label="Settings">⚙</Link>
+            <Link href={`/u/${username}`} className="w-8 h-8 flex items-center justify-center rounded-full bg-amber-500/20 border border-amber-500/30 text-amber-400 font-black text-sm" aria-label="Profile">
+              {user.name[0].toUpperCase()}
+            </Link>
+            <button
+              onClick={() => signOut({ callbackUrl: "/" })}
+              className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-800 text-slate-500 hover:text-red-400 transition-colors text-sm"
+              aria-label="Sign out"
+              title="Sign out"
+            >⎋</button>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          {user.isAdmin && <Link href="/admin" className="text-xs text-amber-500 font-medium">Admin</Link>}
-          <Link href="/settings" className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-800 text-slate-400 hover:text-white transition-colors text-sm">⚙</Link>
-          <Link href={`/u/${username}`} className="w-8 h-8 flex items-center justify-center rounded-full bg-amber-500/20 border border-amber-500/30 text-amber-400 font-black text-sm">
-            {user.name[0].toUpperCase()}
-          </Link>
+        <div className="flex items-center gap-2 mt-1">
+          <span className="text-xs text-slate-500 font-medium">Hey, {user.name.split(" ")[0]} 👋</span>
+          <span className="text-slate-700">·</span>
+          <span className="text-amber-400 font-black text-sm leading-none">{currentStreak}</span>
+          <span className="text-slate-400 text-xs">🔥</span>
+          {examDays !== null && (
+            <span className={`text-xs font-semibold ${examDays <= 30 ? "text-red-400" : "text-slate-500"}`}>· {examDays}d left</span>
+          )}
         </div>
       </header>
 

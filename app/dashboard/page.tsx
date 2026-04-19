@@ -48,6 +48,7 @@ export default async function DashboardPage() {
   const [
     user,
     checkIns,
+    allCheckInDates,
     ownedChecklists,
     archivedOwnedChecklists,
     participatingChecklists,
@@ -57,8 +58,15 @@ export default async function DashboardPage() {
       where: { id: userId },
       select: { name: true, username: true, studyingFor: true, examDate: true, isAdmin: true },
     }),
+    // Cap check-ins at ~12 months so the dashboard payload stays small.
+    // Streak calc + calendar only need recent history; older logs are viewable
+    // on /logs. Previously this was unbounded and grew with account age,
+    // dominating dashboard load time.
     prisma.checkIn.findMany({
-      where: { userId },
+      where: {
+        userId,
+        date: { gte: new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10) },
+      },
       orderBy: { date: "desc" },
       select: {
         id: true,
@@ -70,6 +78,14 @@ export default async function DashboardPage() {
         checklistId: true,
         checklist: { select: { name: true } },
       },
+    }),
+    // Separate lightweight query of ALL check-in dates — used only for
+    // currentStreak / longestStreak / totalDays. Keeping this unbounded (but
+    // tiny per row) so accurate streaks survive the 365-day payload cap above.
+    prisma.checkIn.findMany({
+      where: { userId },
+      select: { date: true },
+      orderBy: { date: "desc" },
     }),
     prisma.checklist.findMany({
       where: { userId, archivedAt: null },
@@ -96,8 +112,11 @@ export default async function DashboardPage() {
       },
       orderBy: { createdAt: "desc" },
     }),
+    // Only pull notifications the user hasn't already dismissed. Before this,
+    // resolved requests kept reappearing after every reload because
+    // `dismissedAt` was set server-side but never filtered on read.
     prisma.projectRequest.findMany({
-      where: { requesterId: userId, status: { not: "PENDING" } },
+      where: { requesterId: userId, status: { not: "PENDING" }, dismissedAt: null },
       include: { checklist: { select: { name: true } } },
       orderBy: { createdAt: "desc" },
       take: 5,
@@ -106,7 +125,9 @@ export default async function DashboardPage() {
 
   if (!user) redirect("/login");
 
-  const dates = checkIns.map((c) => c.date);
+  // Streaks pull from the unbounded dates-only query so they remain accurate
+  // even though `checkIns` above is capped at 12 months.
+  const dates = allCheckInDates.map((c) => c.date);
   const streaks = calcStreaks(dates);
   const today = localDateKey(new Date());
 

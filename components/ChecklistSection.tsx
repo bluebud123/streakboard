@@ -844,6 +844,9 @@ export default function ChecklistSection({
   // the owner approves, `cl.viewerCanEdit` on the next payload flips to true.
   const router = useRouter();
   const [pendingEditRequestIds, setPendingEditRequestIds] = useState<Set<string>>(new Set());
+  // Per-project members panel collapse state. Default is collapsed (empty set)
+  // so owners aren't wading through rosters they only check occasionally.
+  const [expandedMembersIds, setExpandedMembersIds] = useState<Set<string>>(new Set());
 
   // Refresh the dashboard when the tab regains focus. Cheap (uses RSC payload)
   // and covers the "owner approved while I was on another tab" flow.
@@ -2006,30 +2009,58 @@ export default function ChecklistSection({
                 </div>
               )}
 
-              {/* Current editors — owner can revoke edit access granted earlier.
-                  Only shown for owned PUBLIC_COLLAB/EDIT projects where at least
-                  one non-owner participant has canEdit=true. */}
+              {/* Members panel — owner sees every participant (editors AND
+                  view-only) with per-user Revoke for editors. Collapsed by
+                  default since this isn't used often; tap the header to
+                  expand. Replaces the old editors-only panel. */}
               {cl.isOwner && (cl.visibility === "PUBLIC_COLLAB" || cl.visibility === "PUBLIC_EDIT") && (() => {
-                const editors = (cl.participants ?? []).filter(
-                  (p: any) => p.canEdit && p.user.id !== cl.userId
+                const members = (cl.participants ?? []).filter(
+                  (p: any) => p.user.id !== cl.userId
                 );
-                if (editors.length === 0) return null;
+                if (members.length === 0) return null;
+                const isOpen = expandedMembersIds.has(cl.id);
                 return (
                   <div className="px-4 pb-2">
-                    <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-2.5 space-y-1.5">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Editors</p>
-                      {editors.map((p: any) => (
-                        <div key={p.user.id} className="flex items-center justify-between gap-2">
-                          <span className="text-xs text-slate-300">
-                            {p.user.name} <span className="text-slate-500">@{p.user.username}</span>
-                          </span>
-                          <button
-                            onClick={() => revokeEdit(cl.id, p.user.id, p.user.username)}
-                            className="px-2 py-0.5 bg-red-500/10 text-red-400 border border-red-500/20 rounded text-[10px] font-semibold hover:bg-red-500/20"
-                            title="Remove edit access"
-                          >Revoke</button>
+                    <div className="bg-slate-800/40 border border-slate-700 rounded-lg">
+                      <button
+                        type="button"
+                        onClick={() => setExpandedMembersIds((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(cl.id)) next.delete(cl.id); else next.add(cl.id);
+                          return next;
+                        })}
+                        className="w-full flex items-center justify-between gap-2 px-2.5 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest hover:text-slate-200 transition-colors"
+                        aria-expanded={isOpen}
+                      >
+                        <span className="flex items-center gap-2">
+                          <span className={`inline-block transition-transform ${isOpen ? "rotate-90" : ""}`}>▸</span>
+                          <span>Members ({members.length})</span>
+                        </span>
+                        <span className="text-[9px] font-semibold text-slate-600 normal-case tracking-normal">
+                          {members.filter((m: any) => m.canEdit).length} editor{members.filter((m: any) => m.canEdit).length === 1 ? "" : "s"}
+                        </span>
+                      </button>
+                      {isOpen && (
+                        <div className="px-2.5 pb-2.5 space-y-1.5 border-t border-slate-700/60">
+                          {members.map((p: any) => (
+                            <div key={p.user.id} className="flex items-center justify-between gap-2 pt-1.5">
+                              <span className="text-xs text-slate-300 min-w-0 truncate">
+                                {p.user.name} <span className="text-slate-500">@{p.user.username}</span>
+                                {p.canEdit && (
+                                  <span className="ml-1.5 text-[9px] font-bold text-emerald-400 uppercase tracking-wider">editor</span>
+                                )}
+                              </span>
+                              {p.canEdit && (
+                                <button
+                                  onClick={() => revokeEdit(cl.id, p.user.id, p.user.username)}
+                                  className="px-2 py-0.5 bg-red-500/10 text-red-400 border border-red-500/20 rounded text-[10px] font-semibold hover:bg-red-500/20 shrink-0"
+                                  title="Remove edit access"
+                                >Revoke</button>
+                              )}
+                            </div>
+                          ))}
                         </div>
-                      ))}
+                      )}
                     </div>
                   </div>
                 );
