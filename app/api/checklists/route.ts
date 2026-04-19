@@ -9,11 +9,6 @@ function slugify(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
 }
 
-// Minimal HTML escape for strings inlined into notification email templates.
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-}
-
 async function uniqueSlug(base: string): Promise<string> {
   let slug = base;
   let i = 1;
@@ -465,45 +460,12 @@ export async function PATCH(req: Request) {
       where: { checklistId, requesterId: userId, type: "EDIT", status: { not: "PENDING" }, createdAt: { gte: oneDayAgo } },
     });
     if (recentRequest) return NextResponse.json({ error: "You can only request once per day. Please try again later." }, { status: 429 });
-    // Create the request
+    // Create the request. Owner sees it on their next dashboard visit via
+    // the in-app notification bell / project requests block — no email sent
+    // (keeps Resend free-tier headroom for higher-priority messages).
     await prisma.projectRequest.create({
       data: { type: "EDIT", checklistId, requesterId: userId },
     });
-
-    // Notify the owner by email (best-effort — never block the response).
-    // Without this, owners only discovered pending requests on their next
-    // dashboard visit, and didn't know anyone was waiting.
-    (async () => {
-      try {
-        const apiKey = process.env.RESEND_API_KEY;
-        if (!apiKey) return;
-        const [owner, requester] = await Promise.all([
-          prisma.user.findUnique({ where: { id: cl.userId }, select: { email: true, name: true } }),
-          prisma.user.findUnique({ where: { id: userId }, select: { name: true, username: true } }),
-        ]);
-        if (!owner?.email || !requester) return;
-        const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://streakboard.tohimher.com";
-        const from = process.env.FEEDBACK_FROM_EMAIL || "Streakboard <onboarding@resend.dev>";
-        await fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            from,
-            to: [owner.email],
-            subject: `${requester.name} wants to edit "${cl.name}"`,
-            html: `<div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;padding:20px;background:#0f172a;color:#e2e8f0;border-radius:12px;">
-              <h2 style="color:#fbbf24;margin:0 0 12px;">Edit-access request</h2>
-              <p style="margin:0 0 12px;"><strong>${escapeHtml(requester.name)}</strong> <span style="color:#94a3b8;">@${escapeHtml(requester.username)}</span> is asking to edit your project <strong>${escapeHtml(cl.name)}</strong>.</p>
-              <p style="margin:0 0 20px;"><a href="${siteUrl}/dashboard" style="display:inline-block;padding:10px 18px;background:#f59e0b;color:#0f172a;border-radius:8px;font-weight:700;text-decoration:none;">Review on Streakboard →</a></p>
-              <p style="margin:0;color:#64748b;font-size:12px;">You can approve or decline from your dashboard.</p>
-            </div>`,
-            text: `${requester.name} (@${requester.username}) is asking to edit your project "${cl.name}". Review at ${siteUrl}/dashboard`,
-          }),
-        }).catch(() => {});
-      } catch (err) {
-        console.error("[requestEdit email] failed:", err);
-      }
-    })();
 
     return NextResponse.json({ ok: true, requested: true });
   }

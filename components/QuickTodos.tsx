@@ -12,7 +12,9 @@
 //     local copy on GET merge: anything present locally but newer than the
 //     server copy (by updatedAt) stays; anything server-only gets added.
 //
-// No edit / delete buttons beyond ✕ on hover — text is tap-to-edit.
+// ✕ is always visible (mobile has no hover). Text is tap-to-edit.
+// Completed todos collapse under a "Done (n)" toggle so the active list
+// stays short.
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { toast } from "sonner";
@@ -63,6 +65,7 @@ export default function QuickTodos() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState("");
   const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "synced" | "error">("idle");
+  const [showDone, setShowDone] = useState(false);
   const dirtyRef = useRef(false);
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inFlightRef = useRef(false);
@@ -118,10 +121,16 @@ export default function QuickTodos() {
   }, []);
 
   const flushSync = useCallback(async () => {
-    if (!dirtyRef.current || inFlightRef.current) return;
+    if (inFlightRef.current || !dirtyRef.current) return;
     inFlightRef.current = true;
+    // Clear the dirty flag BEFORE the network call. Any mutation that lands
+    // during the in-flight window will re-set it, and we'll re-flush in the
+    // `finally` block. Without this, rapid adds during a sync get overwritten
+    // when we saveLocal(kept) below.
+    dirtyRef.current = false;
     setSyncStatus("syncing");
-    const payload = loadLocal(); // include pending deletions
+    const payload = loadLocal(); // snapshot at send time (includes tombstones)
+    const sentTombstoneIds = new Set(payload.filter((t) => t.deleted).map((t) => t.id));
     try {
       const res = await fetch("/api/quick-todos", {
         method: "POST",
@@ -137,18 +146,27 @@ export default function QuickTodos() {
         }),
       });
       if (!res.ok) throw new Error(String(res.status));
-      // Drop deletion tombstones from local storage — they're gone on server.
-      const kept = payload.filter((t) => !t.deleted);
+      // Re-read localStorage — the user may have added/edited/deleted during
+      // the fetch. Only strip the tombstones that WE just acked with the
+      // server; everything else (new adds, fresh edits) stays intact.
+      const latest = loadLocal();
+      const kept = latest.filter((t) => !(t.deleted && sentTombstoneIds.has(t.id)));
       saveLocal(kept);
-      setTodos(kept);
-      dirtyRef.current = false;
+      setTodos(kept.filter((t) => !t.deleted));
       setSyncStatus("synced");
       setTimeout(() => setSyncStatus((s) => (s === "synced" ? "idle" : s)), 1500);
     } catch {
-      // Keep dirty flag so next scheduleSync retries. Non-fatal — local works.
+      // Network hiccup — re-mark dirty so the next scheduled flush retries.
+      dirtyRef.current = true;
       setSyncStatus("error");
     } finally {
       inFlightRef.current = false;
+      // If mutations happened while we were in flight, chain another flush
+      // quickly so the new items reach the server.
+      if (dirtyRef.current) {
+        if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+        syncTimerRef.current = setTimeout(() => void flushSync(), 300);
+      }
     }
   }, []);
 
@@ -283,10 +301,18 @@ export default function QuickTodos() {
           ))}
           {done.length > 0 && (
             <li className="pt-1">
-              <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest pt-2 pb-1">Done</p>
+              <button
+                type="button"
+                onClick={() => setShowDone((v) => !v)}
+                className="w-full flex items-center gap-2 text-[10px] font-bold text-slate-500 hover:text-slate-300 uppercase tracking-widest pt-2 pb-1 transition-colors"
+                aria-expanded={showDone}
+              >
+                <span className={`inline-block transition-transform ${showDone ? "rotate-90" : ""}`}>▸</span>
+                <span>Done ({done.length})</span>
+              </button>
             </li>
           )}
-          {done.map((t) => (
+          {showDone && done.map((t) => (
             <QuickTodoRow
               key={t.id}
               todo={t}
@@ -354,7 +380,7 @@ function QuickTodoRow({
       <button
         onClick={onDelete}
         aria-label="Delete"
-        className="opacity-0 group-hover:opacity-100 active:opacity-100 text-slate-600 hover:text-red-400 text-sm px-2 py-2 transition-all min-w-[36px] min-h-[36px]"
+        className="text-slate-500 hover:text-red-400 active:text-red-400 text-sm px-2 py-2 transition-colors min-w-[36px] min-h-[36px] shrink-0"
       >✕</button>
     </li>
   );
