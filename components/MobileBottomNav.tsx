@@ -12,8 +12,11 @@ import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+// Dashboard IS the project checklist view — that's the core of the app, so
+// we label the tab "Projects" (with a checklist icon) rather than a generic
+// "Home". Keeps the primary feature one tap away on mobile.
 const items = [
-  { href: "/dashboard", label: "Home", icon: "🏠" },
+  { href: "/dashboard", label: "Projects", icon: "📋" },
   { href: "/logs", label: "Log", icon: "📝" },
   { href: "/discover", label: "Explore", icon: "🌐" },
   { href: "/settings", label: "Settings", icon: "⚙️" },
