@@ -85,8 +85,22 @@ export default function DiscoverList({ cards, isLoggedIn }: Props) {
         </div>
 
         {community.length === 0 ? (
-          <div className="bg-slate-900/50 border border-slate-800/60 border-dashed rounded-3xl p-12 text-center">
-            <p className="text-slate-600 text-sm font-medium">{search ? "No projects match your search." : "No public projects yet."}</p>
+          <div className="bg-slate-900/50 border border-slate-800/60 border-dashed rounded-3xl p-12 text-center space-y-4">
+            <div className="text-5xl opacity-50">{search ? "🔍" : "🌱"}</div>
+            <p className="text-slate-400 text-sm font-semibold">
+              {search ? "No projects match your search." : "No public projects yet — be the first."}
+            </p>
+            {search ? (
+              <button
+                onClick={() => setSearch("")}
+                className="text-xs px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold transition-colors min-h-[44px]"
+              >Clear search</button>
+            ) : (
+              <Link
+                href={isLoggedIn ? "/dashboard" : "/signup"}
+                className="inline-block text-xs px-4 py-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 hover:bg-amber-500/20 font-semibold transition-colors min-h-[44px]"
+              >{isLoggedIn ? "Create a public project" : "Sign up to share one"}</Link>
+            )}
           </div>
         ) : (
           <div className="grid sm:grid-cols-2 gap-6">

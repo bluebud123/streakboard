@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import ChecklistImport from "./ChecklistImport";
 import type { TemplateMetadata } from "@/app/api/templates/route";
 import { toast } from "sonner";
@@ -476,10 +477,14 @@ function ItemNode({
 
   return (
     <div data-item-id={item.id} className={`${indent} transition-all ${isDragOver ? "border-t-2 border-amber-500 bg-amber-500/5 rounded" : ""}`}>
-      <div className={`flex items-center gap-2 group py-1 px-1 rounded-lg hover:bg-slate-800/40 transition-colors ${isDragging ? "opacity-40" : ""}`} {...commonProps}>
+      <div className={`flex items-center gap-2 group py-1.5 sm:py-1 px-1 rounded-lg hover:bg-slate-800/40 transition-colors ${isDragging ? "opacity-40" : ""}`} {...commonProps}>
         {/* Collapse (only tasks with children) */}
         {hasChildren ? (
-          <button onClick={() => onToggleCollapse(item.id)} className="text-slate-600 hover:text-white transition-all w-4 h-4 flex items-center justify-center rounded">
+          <button
+            onClick={() => onToggleCollapse(item.id)}
+            aria-label={isCollapsed ? "Expand" : "Collapse"}
+            className="text-slate-600 hover:text-white transition-all w-8 h-8 sm:w-4 sm:h-4 flex items-center justify-center rounded -ml-1 sm:ml-0"
+          >
             {isCollapsed ? "▸" : "▾"}
           </button>
         ) : (
@@ -499,14 +504,17 @@ function ItemNode({
           <span className="w-5 shrink-0" />
         )}
 
-        {/* Checkbox — click always logs revision */}
-        <input
-          type="checkbox"
-          checked={checked}
-          onChange={() => canCheck && onCheck(checklistId, item.id)}
-          disabled={!canCheck}
-          className="w-5 h-5 rounded-lg accent-amber-500 cursor-pointer shrink-0 disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:scale-110 active:scale-90"
-        />
+        {/* Checkbox — click always logs revision. Wrapper label extends the
+            tap target to ~44px on mobile without enlarging the visual box. */}
+        <label className="relative flex items-center justify-center w-11 h-11 sm:w-5 sm:h-5 shrink-0 cursor-pointer -my-2 sm:my-0 -mx-1.5 sm:mx-0">
+          <input
+            type="checkbox"
+            checked={checked}
+            onChange={() => canCheck && onCheck(checklistId, item.id)}
+            disabled={!canCheck}
+            className="w-5 h-5 rounded-lg accent-amber-500 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:scale-110 active:scale-90"
+          />
+        </label>
 
         {/* Text — double-click or pencil to edit */}
         {isEditing ? (
@@ -828,6 +836,24 @@ export default function ChecklistSection({
   // inline loading state on the Approve/Reject buttons rather than reloading
   // the whole page).
   const [processingRequestIds, setProcessingRequestIds] = useState<Set<string>>(new Set());
+
+  // Client-side memory of which checklists the viewer just requested edit on.
+  // The participating-checklists payload from the server doesn't include the
+  // viewer's own pending requests, so we track them locally to flip the button
+  // to "pending" immediately. On tab-focus we router.refresh() so that once
+  // the owner approves, `cl.viewerCanEdit` on the next payload flips to true.
+  const router = useRouter();
+  const [pendingEditRequestIds, setPendingEditRequestIds] = useState<Set<string>>(new Set());
+
+  // Refresh the dashboard when the tab regains focus. Cheap (uses RSC payload)
+  // and covers the "owner approved while I was on another tab" flow.
+  useEffect(() => {
+    function onFocus() {
+      router.refresh();
+    }
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [router]);
 
   async function resolveRequest(checklistId: string, requestId: string, status: "APPROVED" | "REJECTED", username?: string) {
     if (processingRequestIds.has(requestId)) return;
@@ -1352,19 +1378,41 @@ export default function ChecklistSection({
   }
 
   // ── Add item ─────────────────────────────────────────────────────────────
+  // Guard against double-submit on slow networks: user clicks Add, nothing
+  // seems to happen for a second, they click again → two tasks appear. We
+  // snapshot the payload into a local, close the input *immediately*, and
+  // reject any subsequent call until the fetch resolves.
+  const addingInFlightRef = useRef(false);
   async function submitAddItem(checklistId: string) {
+    if (addingInFlightRef.current) return;
     if (!newItemText.trim() || !addingTo) return;
-    const res = await fetch("/api/checklists", {
-      method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "addItem", checklistId, text: newItemText.trim(), parentId: addingTo.parentId, depth: addingTo.depth }),
-    });
-    if (res.ok) {
-      const raw = await res.json();
-      const newItem: TreeItem = { ...raw, progress: [], revisions: [], children: [] };
-      patchOwned(checklistId, (c) => ({ ...c, items: addItemToTree(c.items, addingTo.parentId, newItem) }));
-      setNewItemText(""); setAddingTo(null);
-    } else {
-      toast.error("Failed to add item — please try again.");
+    addingInFlightRef.current = true;
+    const payload = {
+      text: newItemText.trim(),
+      parentId: addingTo.parentId,
+      depth: addingTo.depth,
+    };
+    // Close the input UI right away so the Enter-key / Add-button can't fire
+    // again before the request completes.
+    setNewItemText("");
+    setAddingTo(null);
+    try {
+      const res = await fetch("/api/checklists", {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "addItem", checklistId, ...payload }),
+      });
+      if (res.ok) {
+        const raw = await res.json();
+        const newItem: TreeItem = { ...raw, progress: [], revisions: [], children: [] };
+        patchOwned(checklistId, (c) => ({ ...c, items: addItemToTree(c.items, payload.parentId, newItem) }));
+      } else {
+        toast.error("Failed to add item — please try again.");
+        // Restore the text so the user doesn't lose their typing.
+        setNewItemText(payload.text);
+        setAddingTo({ checklistId, parentId: payload.parentId, depth: payload.depth });
+      }
+    } finally {
+      addingInFlightRef.current = false;
     }
   }
 
@@ -1850,21 +1898,42 @@ export default function ChecklistSection({
                     )}
                     {/* Request edit access — for joined participants on PUBLIC_COLLAB/EDIT without edit yet */}
                     {!cl.viewerCanEdit && (cl.visibility === "PUBLIC_COLLAB" || cl.visibility === "PUBLIC_EDIT") && (
-                      (cl.requests || []).some(r => r.type === "EDIT" && r.status === "PENDING") ? (
+                      (cl.requests || []).some(r => r.type === "EDIT" && r.status === "PENDING") || pendingEditRequestIds.has(cl.id) ? (
                         <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-800 border border-amber-500/30 text-amber-400">⏳ Edit request pending</span>
                       ) : (
                         <button
                           onClick={async () => {
+                            // Optimistic: flip to "pending" immediately; revert on failure.
+                            setPendingEditRequestIds((prev) => new Set(prev).add(cl.id));
                             const res = await fetch("/api/checklists", {
                               method: "PATCH",
                               headers: { "Content-Type": "application/json" },
                               body: JSON.stringify({ action: "requestEdit", checklistId: cl.id }),
                             });
                             const data = await res.json().catch(() => ({}));
-                            if (res.ok) toast.success(data.alreadyApproved ? "You already have edit access" : "Edit request sent!");
-                            else toast.error(data.error || "Could not send request");
+                            if (res.ok) {
+                              if (data.alreadyApproved) {
+                                toast.success("You already have edit access");
+                                // Clear pending badge and refresh to pick up viewerCanEdit=true
+                                setPendingEditRequestIds((prev) => {
+                                  const next = new Set(prev);
+                                  next.delete(cl.id);
+                                  return next;
+                                });
+                                router.refresh();
+                              } else {
+                                toast.success("Edit request sent!");
+                              }
+                            } else {
+                              setPendingEditRequestIds((prev) => {
+                                const next = new Set(prev);
+                                next.delete(cl.id);
+                                return next;
+                              });
+                              toast.error(data.error || "Could not send request");
+                            }
                           }}
-                          className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-sky-500/10 border border-sky-500/30 text-sky-400 hover:bg-sky-500/20"
+                          className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-sky-500/10 border border-sky-500/30 text-sky-400 hover:bg-sky-500/20 min-h-[28px]"
                         >✎ Request edit access</button>
                       )
                     )}

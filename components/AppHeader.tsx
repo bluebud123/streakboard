@@ -34,12 +34,18 @@ export default function AppHeader() {
 
       <nav className="flex items-center gap-5">
         {isSignedIn ? (
+          // On mobile, MobileBottomNav handles primary navigation. Keep only
+          // Support visible up top so it's still discoverable.
           <>
-            {navLink("/dashboard", "Dashboard")}
-            {navLink("/logs", "Log")}
-            {navLink("/discover", "Explore")}
+            <span className="hidden sm:contents">
+              {navLink("/dashboard", "Dashboard")}
+              {navLink("/logs", "Log")}
+              {navLink("/discover", "Explore")}
+            </span>
             {navLink("/support", "💛 Support")}
-            {navLink("/settings", "Settings")}
+            <span className="hidden sm:contents">
+              {navLink("/settings", "Settings")}
+            </span>
           </>
         ) : (
           <>
