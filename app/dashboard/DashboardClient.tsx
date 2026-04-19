@@ -8,9 +8,11 @@ import MiniCalendar from "@/components/MiniCalendar";
 import ProjectProgress from "@/components/ProjectProgress";
 import DashboardTabBar from "@/components/DashboardTabBar";
 import QuickTodos from "@/components/QuickTodos";
+import StreakBar from "@/components/StreakBar";
 import { calcStreaks, localDateKey } from "@/lib/streak";
 import { quoteForToday } from "@/lib/quotes";
 import { toast } from "sonner";
+import { confirm } from "@/lib/confirm";
 
 interface CheckIn {
   id: string;
@@ -314,6 +316,13 @@ export default function DashboardClient({
 }: Props) {
   const [allCheckIns, setAllCheckIns] = useState(initAllCheckIns);
   const [todayLogs, setTodayLogs] = useState(initTodayLogs);
+
+  // Seed the /logs sessionStorage cache so switching tabs feels instant.
+  // /logs hydrates synchronously from this cache, then revalidates via
+  // /api/checkin in the background.
+  useEffect(() => {
+    try { sessionStorage.setItem("streakboard:logs:v1", JSON.stringify(allCheckIns)); } catch {}
+  }, [allCheckIns]);
   const [currentStreak, setCurrentStreak] = useState(streaks.currentStreak);
   // Log form
   const [newNote, setNewNote] = useState("");
@@ -477,7 +486,7 @@ export default function DashboardClient({
   }
 
   async function handleDeleteLog(id: string) {
-    if (!confirm("Delete this log entry?")) return;
+    if (!(await confirm({ message: "Delete this log entry?", confirmText: "Delete", destructive: true }))) return;
     const res = await fetch(`/api/checkin?id=${id}`, { method: "DELETE" });
     if (res.ok) {
       const updated = allCheckIns.filter((c) => c.id !== id);
@@ -786,6 +795,8 @@ export default function DashboardClient({
               <StatCard label="Longest" value={`${streaks.longestStreak}d`} icon="🏆" />
               {deadlineStatCard}
             </div>
+            {/* Streak activity bar — last 30 days at a glance */}
+            <StreakBar checkIns={allCheckIns} days={30} />
             {/* Upcoming deadlines — top 3 across owned + participating */}
             {upcomingDeadlinesBlock}
             {/* Log today */}
@@ -886,6 +897,7 @@ export default function DashboardClient({
       <div className="hidden lg:grid max-w-[1400px] mx-auto px-4 py-6 grid-cols-[280px_1fr_280px] gap-6 items-start min-h-[calc(100vh-73px)]">
         <aside className="space-y-4 sticky top-[73px] max-h-[calc(100vh-90px)] overflow-y-auto pb-4 pr-1 scrollbar-hide">
           {streakBadge}
+          <StreakBar checkIns={allCheckIns} days={30} />
           <MiniCalendar checkIns={allCheckIns} reviewsByDate={reviewsByDate} defaultDate={todayKey} />
           {upcomingDeadlinesBlock}
           {reviewedTodayBlock}

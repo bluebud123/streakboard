@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { toast } from "sonner";
+import { confirm } from "@/lib/confirm";
 
 interface UserRow {
   id: string;
@@ -38,12 +40,17 @@ export default function AdminClient({ users: initialUsers, anonymousGraphs: init
   );
 
   async function removeUser(userId: string, username: string) {
-    if (!confirm(`Remove user @${username}? This will delete all their projects, check-ins, and progress. This cannot be undone.`)) return;
+    if (!(await confirm({
+      title: "Remove user?",
+      message: `Remove @${username}? This deletes all their projects, check-ins, and progress. Cannot be undone.`,
+      confirmText: "Remove",
+      destructive: true,
+    }))) return;
     setRemovingId(userId);
     const res = await fetch(`/api/admin?userId=${userId}`, { method: "DELETE" });
     setRemovingId(null);
     if (res.ok) setUsers((prev) => prev.filter((u) => u.id !== userId));
-    else alert("Failed to remove user — please try again.");
+    else toast.error("Failed to remove user — please try again.");
   }
 
   async function toggleAnonymous() {

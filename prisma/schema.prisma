@@ -31,6 +31,7 @@ model User {
   personalOrders      ChecklistPersonalOrder[]
   likes               ChecklistLike[]
   quickTodos          QuickTodo[]
+  personalDeadlines   UserChecklistDeadline[]
 }
 
 // Lightweight per-user scratch list shown under the Log Today widget.
@@ -87,6 +88,7 @@ model Checklist {
   requests     ProjectRequest[]
   checkIns     CheckIn[]
   likes        ChecklistLike[]
+  personalDeadlines UserChecklistDeadline[]
 
   @@index([userId, archivedAt])
   @@index([visibility, createdAt])
@@ -112,6 +114,22 @@ model ChecklistItem {
 
   @@index([parentId])
   @@index([checklistId, order])
+}
+
+// Per-user deadline override. Any user (owner, editor, or pure participant)
+// can set their own deadline on any project they can see. The project's
+// base `Checklist.deadline` is the creator's default — used as fallback
+// when a viewer has no personal deadline row.
+model UserChecklistDeadline {
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  checklistId String
+  checklist   Checklist @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+  deadline    DateTime?
+  updatedAt   DateTime  @updatedAt
+
+  @@id([userId, checklistId])
+  @@index([userId])
 }
 
 model ChecklistPersonalOrder {

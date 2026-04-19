@@ -566,6 +566,10 @@ export async function PATCH(req: Request) {
   }
 
   // ── setDeadline ───────────────────────────────────────────────────────────
+  // Creator sets the project-wide "default" deadline. Any viewer (owner,
+  // editor, or participant) can separately set their *personal* deadline via
+  // `setPersonalDeadline` below — that's the one actually shown on their
+  // dashboard. Owner-only on this action to keep the default authoritative.
   if (action === "setDeadline") {
     const { checklistId, deadline } = body;
     const cl = await prisma.checklist.findUnique({ where: { id: checklistId } });
@@ -574,6 +578,34 @@ export async function PATCH(req: Request) {
       where: { id: checklistId },
       data: { deadline: deadline ? new Date(deadline) : null },
     });
+    return NextResponse.json({ ok: true });
+  }
+
+  // ── setPersonalDeadline ───────────────────────────────────────────────────
+  // Any user who can see the project (owner / participant / public viewer)
+  // can set their own target date. Clearing falls back to the creator's
+  // default (Checklist.deadline).
+  if (action === "setPersonalDeadline") {
+    const { checklistId, deadline } = body;
+    const cl = await prisma.checklist.findUnique({ where: { id: checklistId } });
+    if (!cl) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    const isOwner = cl.userId === userId;
+    const isParticipant = !!(await prisma.checklistParticipant.findUnique({
+      where: { checklistId_userId: { checklistId, userId } },
+    }));
+    const isPublic = ["PUBLIC_TEMPLATE", "PUBLIC_COLLAB", "PUBLIC_EDIT"].includes(cl.visibility);
+    if (!isOwner && !isParticipant && !isPublic) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    if (deadline) {
+      await prisma.userChecklistDeadline.upsert({
+        where: { userId_checklistId: { userId, checklistId } },
+        update: { deadline: new Date(deadline) },
+        create: { userId, checklistId, deadline: new Date(deadline) },
+      });
+    } else {
+      await prisma.userChecklistDeadline.deleteMany({ where: { userId, checklistId } });
+    }
     return NextResponse.json({ ok: true });
   }
 

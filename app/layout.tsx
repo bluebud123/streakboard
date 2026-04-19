@@ -5,6 +5,7 @@ import SiteFooter from "@/components/SiteFooter";
 import MobileBottomNav from "@/components/MobileBottomNav";
 import RouteProgress from "@/components/RouteProgress";
 import { Toaster } from "sonner";
+import { ConfirmHost } from "@/lib/confirm";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://streakboard.tohimher.com";
 
@@ -54,6 +55,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </SessionProvider>
         <SiteFooter />
         <Toaster theme="dark" position="top-center" richColors />
+        <ConfirmHost />
       </body>
     </html>
   );

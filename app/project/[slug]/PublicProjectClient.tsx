@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
+import { confirm } from "@/lib/confirm";
 import type { TreeItem } from "./page";
 
 interface LeaderboardEntry {
@@ -360,7 +361,12 @@ export default function PublicProjectClient({
   }
 
   async function leaveProject() {
-    if (!confirm("Leave this project? Your progress will be cleared.")) return;
+    if (!(await confirm({
+      title: "Leave this project?",
+      message: "Your progress will be cleared.",
+      confirmText: "Leave",
+      destructive: true,
+    }))) return;
     setLeaving(true);
     const res = await fetch("/api/checklists", {
       method: "PATCH",
@@ -378,7 +384,12 @@ export default function PublicProjectClient({
   }
 
   async function resetProgress() {
-    if (!confirm("Reset all your progress on this project? This cannot be undone.")) return;
+    if (!(await confirm({
+      title: "Reset all progress?",
+      message: "This cannot be undone.",
+      confirmText: "Reset",
+      destructive: true,
+    }))) return;
     setResetting(true);
     const res = await fetch(`/api/checklists/${checklistId}/progress`, { method: "DELETE" });
     setResetting(false);
@@ -406,7 +417,12 @@ export default function PublicProjectClient({
   }
 
   async function deleteItem(itemId: string) {
-    if (!confirm("Delete this item? Its subtasks will also be removed.")) return;
+    if (!(await confirm({
+      title: "Delete item?",
+      message: "Its subtasks will also be removed.",
+      confirmText: "Delete",
+      destructive: true,
+    }))) return;
     const res = await fetch("/api/checklists", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },

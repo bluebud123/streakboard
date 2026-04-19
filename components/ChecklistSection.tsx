@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import ChecklistImport from "./ChecklistImport";
 import type { TemplateMetadata } from "@/app/api/templates/route";
 import { toast } from "sonner";
+import { confirm } from "@/lib/confirm";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -859,7 +860,12 @@ export default function ChecklistSection({
   }, [router]);
 
   async function revokeEdit(checklistId: string, participantUserId: string, username?: string) {
-    if (!confirm(`Revoke edit access from @${username ?? "this member"}? They can still view and track their own progress.`)) return;
+    if (!(await confirm({
+      title: "Revoke edit access?",
+      message: `@${username ?? "this member"} will keep view + track access but can no longer edit.`,
+      confirmText: "Revoke",
+      destructive: true,
+    }))) return;
     const res = await fetch("/api/checklists", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -1224,7 +1230,12 @@ export default function ChecklistSection({
 
   // ── Delete item ──────────────────────────────────────────────────────────
   async function deleteItem(checklistId: string, itemId: string) {
-    if (!confirm("Delete this item? Its subtasks will also be removed.")) return;
+    if (!(await confirm({
+      title: "Delete item?",
+      message: "Its subtasks will also be removed.",
+      confirmText: "Delete",
+      destructive: true,
+    }))) return;
     const res = await fetch("/api/checklists", {
       method: "PATCH", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "deleteItem", itemId }),
@@ -1244,7 +1255,12 @@ export default function ChecklistSection({
 
   // ── Delete project ───────────────────────────────────────────────────────
   async function deleteProject(checklistId: string) {
-    if (!confirm("Delete this project? This cannot be undone.")) return;
+    if (!(await confirm({
+      title: "Delete project?",
+      message: "This cannot be undone.",
+      confirmText: "Delete",
+      destructive: true,
+    }))) return;
     const res = await fetch("/api/checklists", {
       method: "PATCH", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "delete", checklistId }),
@@ -1259,7 +1275,12 @@ export default function ChecklistSection({
   // ── Reset progress ────────────────────────────────────────────────────────
 
   async function resetProgress(checklistId: string, name: string) {
-    if (!confirm(`Reset ALL your progress on "${name}"?\n\nThis will uncheck every item and clear all review dates for your account. This cannot be undone.`)) return;
+    if (!(await confirm({
+      title: `Reset progress on "${name}"?`,
+      message: "Unchecks every item and clears all review dates for your account. This cannot be undone.",
+      confirmText: "Reset",
+      destructive: true,
+    }))) return;
 
     // Recursively clear progress + revisions on every item of the matching checklist.
     const clearItems = (items: TreeItem[]): TreeItem[] =>
@@ -1300,7 +1321,12 @@ export default function ChecklistSection({
 
   // ── Leave project (participant self-remove) ─────────────────────────────
   async function leaveProject(checklistId: string, name: string) {
-    if (!confirm(`Leave "${name}"?\n\nYour progress, checkboxes and review dates on this project will be removed. You can re-join later.`)) return;
+    if (!(await confirm({
+      title: `Leave "${name}"?`,
+      message: "Your progress, checkboxes and review dates will be removed. You can re-join later.",
+      confirmText: "Leave",
+      destructive: true,
+    }))) return;
 
     const snapshot = participating;
     const next = participating.filter((c) => c.id !== checklistId);
@@ -1329,7 +1355,11 @@ export default function ChecklistSection({
 
   // ── Archive project ──────────────────────────────────────────────────────
   async function archiveProject(checklistId: string, name: string) {
-    if (!confirm(`Archive "${name}"? You can restore it from the Archived section.`)) return;
+    if (!(await confirm({
+      title: `Archive "${name}"?`,
+      message: "You can restore it from the Archived section.",
+      confirmText: "Archive",
+    }))) return;
     const res = await fetch("/api/checklists", {
       method: "PATCH", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "archiveProject", checklistId }),
@@ -1349,10 +1379,16 @@ export default function ChecklistSection({
   }
 
   // ── Set deadline ─────────────────────────────────────────────────────────
+  // Owner clicks set the project default (setDeadline). Non-owners (editors
+  // or pure participants) set only their *personal* deadline — the shared
+  // list can be reused year-over-year by different students with their own
+  // exam dates. Server + dashboard merge personal over default.
   async function saveDeadline(checklistId: string, deadline: string | null) {
+    const isOwner = ownedRef.current.some((c) => c.id === checklistId);
+    const action = isOwner ? "setDeadline" : "setPersonalDeadline";
     const res = await fetch("/api/checklists", {
       method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "setDeadline", checklistId, deadline }),
+      body: JSON.stringify({ action, checklistId, deadline }),
     });
     if (res.ok) {
       patchOwned(checklistId, (c) => ({ ...c, deadline: deadline }));
@@ -1837,8 +1873,8 @@ export default function ChecklistSection({
 
                 {/* Row 2: deadline + visibility badge + link */}
                 <div className="flex items-center gap-2 flex-wrap mt-1 ml-6">
-                  {/* Deadline */}
-                  {cl.isOwner && editingDeadlineId === cl.id ? (
+                  {/* Deadline — every viewer can set their own */}
+                  {editingDeadlineId === cl.id ? (
                     <input
                       type="date"
                       autoFocus
@@ -1849,7 +1885,7 @@ export default function ChecklistSection({
                     />
                   ) : (
                     <button
-                      onClick={() => cl.isOwner && setEditingDeadlineId(cl.id)}
+                      onClick={() => setEditingDeadlineId(cl.id)}
                       className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full transition-colors ${
                         deadlineDaysLeft === null
                           ? "text-slate-600 hover:text-slate-400"
@@ -1859,10 +1895,10 @@ export default function ChecklistSection({
                           ? "bg-amber-500/10 text-amber-400 border border-amber-500/30"
                           : "bg-slate-800 text-slate-400 border border-slate-700"
                       }`}
-                      title={cl.isOwner ? "Click to set deadline" : undefined}
+                      title={cl.isOwner ? "Click to set project deadline" : "Click to set your personal deadline"}
                     >
                       {deadlineDaysLeft === null
-                        ? (cl.isOwner ? "+ deadline" : "")
+                        ? "+ deadline"
                         : deadlineDaysLeft < 0
                         ? `🔥 ${Math.abs(deadlineDaysLeft)}d overdue`
                         : `🗓 ${deadlineDaysLeft}d left`}

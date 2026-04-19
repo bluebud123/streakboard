@@ -165,6 +165,20 @@ export default async function DashboardPage() {
   // each item's `progress` to reflect the group (anyDone) before serializing.
   await applySharedProgress([...ownedChecklists, ...participatingChecklists]);
 
+  // Per-user deadlines: any viewer can set a personal target date that
+  // overrides the creator's default. Merge those onto the project objects
+  // so the dashboard renders the viewer's own deadline.
+  const personalDeadlines = await prisma.userChecklistDeadline.findMany({
+    where: { userId, deadline: { not: null } },
+    select: { checklistId: true, deadline: true },
+  });
+  const personalByCl = new Map(personalDeadlines.map((p) => [p.checklistId, p.deadline]));
+  for (const cl of [...ownedChecklists, ...participatingChecklists] as any[]) {
+    const personal = personalByCl.get(cl.id);
+    if (personal) cl.deadline = personal;
+    cl.personalDeadline = personal ?? null;
+  }
+
   // Streaks pull from the unbounded dates-only query so they remain accurate
   // even though `checkIns` above is capped at 12 months.
   const dates = allCheckInDates.map((c) => c.date);

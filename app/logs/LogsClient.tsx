@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import AppHeader from "@/components/AppHeader";
 import DashboardTabBar from "@/components/DashboardTabBar";
+import { confirm } from "@/lib/confirm";
 
 interface CheckIn {
   id: string;
@@ -23,8 +24,40 @@ interface Props {
 
 type Tab = "sessions" | "notes" | "project-notes";
 
+// Shared sessionStorage key — dashboard seeds this so /logs renders
+// instantly on first navigation, then we revalidate in the background.
+const LOGS_CACHE_KEY = "streakboard:logs:v1";
+
 export default function LogsClient({ initialLogs }: Props) {
-  const [logs, setLogs] = useState<CheckIn[]>(initialLogs);
+  // Hydrate from sessionStorage cache synchronously so paint shows logs
+  // without a loading flash. If no cache yet, fall back to initialLogs
+  // (usually empty — the server page no longer blocks on a DB query).
+  const [logs, setLogs] = useState<CheckIn[]>(() => {
+    if (initialLogs.length > 0) return initialLogs;
+    if (typeof window === "undefined") return [];
+    try {
+      const raw = sessionStorage.getItem(LOGS_CACHE_KEY);
+      if (raw) return JSON.parse(raw) as CheckIn[];
+    } catch {}
+    return [];
+  });
+
+  // Revalidate from the server on mount. The cache may be stale or missing
+  // (first visit, cross-tab edits) — fetch in the background and overwrite.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/checkin");
+        if (!res.ok) return;
+        const data = (await res.json()) as CheckIn[];
+        if (cancelled) return;
+        setLogs(data);
+        try { sessionStorage.setItem(LOGS_CACHE_KEY, JSON.stringify(data)); } catch {}
+      } catch {}
+    })();
+    return () => { cancelled = true; };
+  }, []);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editMinutes, setEditMinutes] = useState<number>(0);
   const [editNote, setEditNote] = useState<string>("");
@@ -139,7 +172,7 @@ export default function LogsClient({ initialLogs }: Props) {
   }
 
   async function deleteLog(id: string) {
-    if (!confirm("Delete this entry?")) return;
+    if (!(await confirm({ message: "Delete this entry?", confirmText: "Delete", destructive: true }))) return;
     const res = await fetch(`/api/checkin?id=${id}`, { method: "DELETE" });
     if (res.ok) setLogs((prev) => prev.filter((l) => l.id !== id));
   }
