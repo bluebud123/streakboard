@@ -210,8 +210,14 @@ function ItemNode({
         <span className={`flex-1 text-sm ${isSubtask ? "text-slate-400" : "text-slate-300"} ${item.myDone ? "line-through text-slate-500" : ""}`}>
           {item.text}
         </span>
-        {multiParticipant && !item.isSection && (
-          <span className="text-xs text-slate-600 shrink-0">{item.doneCount}/{item.totalParticipants}</span>
+        {/* Show only the count of people who've checked this item. The "/N"
+            total was noisy — the list is to track what each individual has
+            done, not group completeness. 0 is hidden to reduce clutter. */}
+        {multiParticipant && !item.isSection && item.doneCount > 0 && (
+          <span
+            className="text-xs text-slate-600 shrink-0"
+            title={`${item.doneCount} ${item.doneCount === 1 ? "person has" : "people have"} checked this`}
+          >✓ {item.doneCount}</span>
         )}
         {editMode && canEdit && (
           <button onClick={() => onDelete(item.id)} className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 text-xs transition-all">✕</button>

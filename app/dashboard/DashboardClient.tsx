@@ -349,7 +349,10 @@ export default function DashboardClient({
     return `${m}:${String(s).padStart(2, "0")}`;
   }
 
-  const [mobileTab, setMobileTab] = useState<"home" | "projects" | "progress" | "calendar">("home");
+  // Default landing on mobile is the Projects tab — that's the core feature
+  // of the app. Previously defaulted to "home" which only showed the logging
+  // widget, making users think the project list had disappeared.
+  const [mobileTab, setMobileTab] = useState<"home" | "projects" | "progress" | "calendar">("projects");
   const [scrollTarget, setScrollTarget] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);

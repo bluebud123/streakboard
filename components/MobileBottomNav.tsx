@@ -27,6 +27,12 @@ export default function MobileBottomNav() {
   const pathname = usePathname();
   if (!session?.user) return null;
 
+  // The dashboard ships its own in-page bottom tab bar (Home / Projects /
+  // Progress / Calendar / Logs) which handles switching between content
+  // modes on mobile. Rendering the global nav there would stack two bars
+  // on top of each other and hide the page's own Projects tab behind ours.
+  if (pathname === "/dashboard" || pathname.startsWith("/dashboard/")) return null;
+
   return (
     <nav
       aria-label="Primary"
