@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import Link from "next/link";
 import AppHeader from "@/components/AppHeader";
+import DashboardTabBar from "@/components/DashboardTabBar";
 
 interface CheckIn {
   id: string;
@@ -419,6 +420,10 @@ export default function LogsClient({ initialLogs }: Props) {
           )
         )}
       </div>
+      {/* Shared tab bar so nav doesn't change shape when jumping between
+          /dashboard and /logs. Tapping a non-logs tab routes back to
+          /dashboard?tab=X which dashboard reads to select the sub-view. */}
+      <DashboardTabBar active="logs" />
     </div>
   );
 }

@@ -6,6 +6,8 @@ import Link from "next/link";
 import ChecklistSection, { type ChecklistData, type TreeItem } from "@/components/ChecklistSection";
 import MiniCalendar from "@/components/MiniCalendar";
 import ProjectProgress from "@/components/ProjectProgress";
+import DashboardTabBar from "@/components/DashboardTabBar";
+import QuickTodos from "@/components/QuickTodos";
 import { calcStreaks, localDateKey } from "@/lib/streak";
 import { toast } from "sonner";
 
@@ -352,7 +354,15 @@ export default function DashboardClient({
   // Default landing on mobile is the Projects tab — that's the core feature
   // of the app. Previously defaulted to "home" which only showed the logging
   // widget, making users think the project list had disappeared.
-  const [mobileTab, setMobileTab] = useState<"home" | "projects" | "progress" | "calendar">("projects");
+  // If the URL has ?tab=home|progress|calendar|projects, we initialize from
+  // that — /logs's nav links here with that query so tapping its tabs lands
+  // the user on the right sub-view without flicker.
+  const [mobileTab, setMobileTab] = useState<"home" | "projects" | "progress" | "calendar">(() => {
+    if (typeof window === "undefined") return "projects";
+    const tab = new URLSearchParams(window.location.search).get("tab");
+    if (tab === "home" || tab === "progress" || tab === "calendar" || tab === "projects") return tab;
+    return "projects";
+  });
   const [scrollTarget, setScrollTarget] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
@@ -725,6 +735,8 @@ export default function DashboardClient({
                 </div>
               </div>
             )}
+            {/* Quick scratch-pad todos (local-first, background-synced) */}
+            <QuickTodos />
           </div>
         )}
 
@@ -761,32 +773,34 @@ export default function DashboardClient({
           <div className="px-4 pt-4 space-y-4">
             {streakBadge}
             <MiniCalendar checkIns={allCheckIns} reviewsByDate={reviewsByDate} defaultDate={todayKey} />
+            {/* Today's session + reviewed blocks are visible by default here
+                so the user can glance at "what happened today" without
+                drilling into the Home tab. */}
+            {todayLogs.length > 0 && (
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Today's sessions</h3>
+                  <span className="text-xs text-slate-500">{todayLogs.reduce((s, l) => s + l.minutes, 0)} min</span>
+                </div>
+                <div className="space-y-1.5">
+                  {todayLogs.map((log) => (
+                    <div key={log.id} className="text-xs flex items-start gap-2">
+                      <span className="text-slate-500 shrink-0 w-8">{log.minutes > 0 ? `${log.minutes}m` : "📝"}</span>
+                      {log.checklistName && <span className="text-slate-500 shrink-0">· {log.checklistName}</span>}
+                      {log.note && <span className="italic text-slate-600 truncate">&ldquo;{log.note}&rdquo;</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {reviewedTodayBlock}
           </div>
         )}
       </div>
 
-      {/* ── Mobile bottom nav ──────────────────────────────────────────────── */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-slate-950/95 backdrop-blur-md border-t border-slate-800/80 flex items-center">
-        {([
-          { key: "home",     icon: "🏠", label: "Home" },
-          { key: "projects", icon: "📋", label: "Projects" },
-          { key: "progress", icon: "📊", label: "Progress" },
-          { key: "calendar", icon: "📅", label: "Calendar" },
-        ] as const).map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setMobileTab(t.key as typeof mobileTab)}
-            className={`flex-1 flex flex-col items-center gap-1 py-2.5 transition-colors ${mobileTab === t.key ? "text-amber-400" : "text-slate-500 active:text-slate-300"}`}
-          >
-            <span className="text-xl leading-none">{t.icon}</span>
-            <span className={`text-[10px] font-semibold tracking-wide ${mobileTab === t.key ? "text-amber-400" : "text-slate-500"}`}>{t.label}</span>
-          </button>
-        ))}
-        <Link href="/logs" className="flex-1 flex flex-col items-center gap-1 py-2.5 text-slate-500 active:text-slate-300 transition-colors">
-          <span className="text-xl leading-none">📓</span>
-          <span className="text-[10px] font-semibold tracking-wide">Logs</span>
-        </Link>
-      </nav>
+      {/* ── Mobile bottom nav — shared with /logs so switching routes doesn't
+           reshape the nav bar (see components/DashboardTabBar) ─────────────── */}
+      <DashboardTabBar active={mobileTab} onTabChange={(t) => setMobileTab(t)} />
 
       <div className="hidden lg:grid max-w-[1400px] mx-auto px-4 py-6 grid-cols-[280px_1fr_280px] gap-6 items-start min-h-[calc(100vh-73px)]">
         <aside className="space-y-4 sticky top-[73px] max-h-[calc(100vh-90px)] overflow-y-auto pb-4 pr-1 scrollbar-hide">
@@ -811,6 +825,8 @@ export default function DashboardClient({
               </div>
             </div>
           )}
+          {/* Quick scratch-pad todos — sticky-note style, local-first */}
+          <QuickTodos />
         </aside>
 
         <main className="space-y-6 min-w-0">

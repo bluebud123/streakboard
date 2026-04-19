@@ -30,6 +30,26 @@ model User {
   createdItems        ChecklistItem[]        @relation("ItemCreator")
   personalOrders      ChecklistPersonalOrder[]
   likes               ChecklistLike[]
+  quickTodos          QuickTodo[]
+}
+
+// Lightweight per-user scratch list shown under the Log Today widget.
+// Intentionally schema-simple (no checklistId, no nesting) — this is the
+// "sticky note" feature for miscellaneous tasks that don't warrant creating
+// a full project. Client reads/writes localStorage first; server sync is
+// debounced in the background.
+model QuickTodo {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  text      String
+  done      Boolean  @default(false)
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, done])
+  @@index([userId, updatedAt])
 }
 
 model CheckIn {
