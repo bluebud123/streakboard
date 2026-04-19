@@ -9,6 +9,7 @@ import ProjectProgress from "@/components/ProjectProgress";
 import DashboardTabBar from "@/components/DashboardTabBar";
 import QuickTodos from "@/components/QuickTodos";
 import { calcStreaks, localDateKey } from "@/lib/streak";
+import { quoteForToday } from "@/lib/quotes";
 import { toast } from "sonner";
 
 interface CheckIn {
@@ -547,9 +548,10 @@ export default function DashboardClient({
     return <StatCard label="Days logged" value={`${streaks.totalDays}`} icon="📅" />;
   })();
 
-  // Upcoming-deadlines row for the Home tab. Takes the 3 soonest deadlines
-  // across owned + participating projects (skipping past-due >30d) so users
-  // can see what's next at a glance without drilling into Projects.
+  // Upcoming-deadlines row for the Home tab. Shows EVERY project that has a
+  // deadline set, sorted by proximity (overdue surfaces first, then nearest
+  // upcoming). Limit 3 so the row stays compact — user can scroll the
+  // Projects tab for the full list.
   const upcomingDeadlines = allProjects
     .filter((p) => p.deadline)
     .map((p) => ({
@@ -558,7 +560,6 @@ export default function DashboardClient({
       slug: p.slug,
       daysLeft: Math.ceil((new Date(p.deadline!).getTime() - Date.now()) / 86400000),
     }))
-    .filter((p) => p.daysLeft > -30)
     .sort((a, b) => a.daysLeft - b.daysLeft)
     .slice(0, 3);
 
@@ -912,10 +913,11 @@ export default function DashboardClient({
 
         <main className="space-y-6 min-w-0">
           <div>
-            <h1 className="text-2xl font-bold text-slate-100">Hey, {user.name.split(" ")[0]}</h1>
-            <p className="text-slate-400 text-sm mt-1">Studying for <span className="text-amber-400">{user.studyingFor}</span>
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-100">Hey, {user.name.split(" ")[0]}</h1>
+            <p className="text-slate-400 text-xs sm:text-sm mt-1">Studying for <span className="text-amber-400">{user.studyingFor}</span>
               {examDays !== null && <> · <span className={examDays <= 30 ? "text-red-400" : "text-emerald-400"}>{examDays} days left</span></>}
             </p>
+            <p className="text-slate-500 text-xs sm:text-sm mt-2 italic">“{quoteForToday(user.username)}”</p>
           </div>
           <div className="grid grid-cols-3 gap-3">
             <StatCard label="Current streak" value={`${currentStreak}d`} icon="🔥" highlight />

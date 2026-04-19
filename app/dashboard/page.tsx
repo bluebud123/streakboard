@@ -39,6 +39,42 @@ function serializeChecklist(cl: any) {
   };
 }
 
+// For PRIVATE_COLLAB, progress is shared: if ANY member has checked an item,
+// it appears checked for all. The dashboard loads progress scoped to the
+// viewer only (to keep payload small), so we post-process shared checklists
+// by querying all members' progress and rewriting each item's `progress`
+// array to reflect the group state.
+async function applySharedProgress(checklists: any[]): Promise<void> {
+  const shared = checklists.filter((cl) => cl.visibility === "PRIVATE_COLLAB");
+  if (shared.length === 0) return;
+
+  // Collect every item id across all shared checklists
+  const ids: string[] = [];
+  function collect(items: any[]) {
+    for (const it of items) {
+      ids.push(it.id);
+      if (it.children?.length) collect(it.children);
+    }
+  }
+  for (const cl of shared) collect(cl.items ?? []);
+  if (ids.length === 0) return;
+
+  // Single query for ALL members' done state across these items
+  const allProgress = await prisma.checklistProgress.findMany({
+    where: { itemId: { in: ids }, done: true },
+    select: { itemId: true },
+  });
+  const doneSet = new Set(allProgress.map((p) => p.itemId));
+
+  function rewrite(items: any[]) {
+    for (const it of items) {
+      it.progress = doneSet.has(it.id) ? [{ done: true }] : [];
+      if (it.children?.length) rewrite(it.children);
+    }
+  }
+  for (const cl of shared) rewrite(cl.items ?? []);
+}
+
 export default async function DashboardPage() {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
@@ -124,6 +160,10 @@ export default async function DashboardPage() {
   ]);
 
   if (!user) redirect("/login");
+
+  // PRIVATE_COLLAB projects share progress across all members — rewrite
+  // each item's `progress` to reflect the group (anyDone) before serializing.
+  await applySharedProgress([...ownedChecklists, ...participatingChecklists]);
 
   // Streaks pull from the unbounded dates-only query so they remain accurate
   // even though `checkIns` above is capped at 12 months.

@@ -1138,6 +1138,11 @@ export default function ChecklistSection({
     const text = editingText.trim();
     setEditingId(null);
     if (!text) return;
+    // Skip the roundtrip (and the misleading error toast) if the user didn't
+    // actually change anything — pressing Enter/blur on an unchanged field
+    // was firing "Change not saved" whenever the API hiccupped on a no-op.
+    const original = findItemText(checklistId, itemId);
+    if (original !== null && original === text) return;
     const res = await fetch("/api/checklists", {
       method: "PATCH", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "renameItem", itemId, text }),
@@ -1147,6 +1152,25 @@ export default function ChecklistSection({
     } else {
       toast.error("Change not saved — please try again.");
     }
+  }
+
+  // Walks the tree for a checklist and returns the current text of an item,
+  // or null if not found. Used to detect no-op renames.
+  function findItemText(checklistId: string, itemId: string): string | null {
+    const all = [...ownedRef.current, ...participating];
+    const cl = all.find((c) => c.id === checklistId);
+    if (!cl) return null;
+    function walk(items: TreeItem[]): string | null {
+      for (const it of items) {
+        if (it.id === itemId) return it.text;
+        if (it.children?.length) {
+          const found = walk(it.children);
+          if (found !== null) return found;
+        }
+      }
+      return null;
+    }
+    return walk(cl.items);
   }
 
   // ── Check item (logs revision) ───────────────────────────────────────────
@@ -1794,7 +1818,7 @@ export default function ChecklistSection({
                     />
                   ) : (
                     <span
-                      className="flex-1 text-base font-bold text-slate-100 truncate cursor-default hover:text-white transition-colors"
+                      className="flex-1 min-w-0 text-sm sm:text-base font-bold text-slate-100 truncate cursor-default hover:text-white transition-colors"
                       onClick={() => { const next = isOpen ? null : cl.id; setExpanded(next); onExpandChange?.(next); }}
                       onDoubleClick={() => { if (cl.isOwner) { setEditingTitleId(cl.id); setEditingTitleText(cl.name); } }}
                       title={cl.isOwner ? "Click to expand · Double-click to rename" : cl.name}
