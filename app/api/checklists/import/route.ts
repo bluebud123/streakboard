@@ -1,6 +1,16 @@
 import { NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
+
+// Dashboard caches getArchivedChecklists() and getRecentRequests() with tag
+// `checklists:${userId}`. Importing creates a new checklist so we must bust
+// the cache — otherwise router.refresh() (e.g. from the tab-focus listener
+// in ChecklistSection) serves stale data and the dashboard can crash when
+// the client state references a checklist the RSC payload doesn't have.
+function bustChecklists(userId: string) {
+  try { revalidateTag(`checklists:${userId}`); } catch {}
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -170,6 +180,7 @@ export async function POST(req: Request) {
       },
       user: { select: { id: true, username: true, name: true, isPublic: true } },
       participants: { include: { user: { select: { id: true, username: true, name: true } } } },
+      requests: { where: { status: "PENDING" }, include: { requester: { select: { name: true, username: true } } } },
     };
 
     // ── Special case: Orthopaedic Surgery Fellowship Exam ─────────────────────
@@ -218,7 +229,12 @@ export async function POST(req: Request) {
             where: { id: canonical.id },
             include: fullInclude,
           });
-          return NextResponse.json({ ...full, alreadyJoined }, { status: 200 });
+          bustChecklists(session.user.id);
+          // Round-trip through JSON.stringify so all Date objects (createdAt,
+          // deadline, revisions[].createdAt, etc.) become ISO strings before
+          // the client consumes them. Avoids flight-serialization edge cases.
+          const safe = JSON.parse(JSON.stringify(full));
+          return NextResponse.json({ ...safe, alreadyJoined }, { status: 200 });
         }
 
         // No canonical yet — create one single time, owned by @blue.
@@ -247,7 +263,11 @@ export async function POST(req: Request) {
       include: fullInclude,
     });
 
-    return NextResponse.json(full, { status: 201 });
+    bustChecklists(session.user.id);
+    // Round-trip through JSON so the response is pure strings/primitives
+    // (no Date instances). Matches what the dashboard sends to the client.
+    const safe = JSON.parse(JSON.stringify(full));
+    return NextResponse.json(safe, { status: 201 });
   } catch (err) {
     console.error("Import error:", err);
     return NextResponse.json({ error: "Import failed — please try again" }, { status: 500 });
