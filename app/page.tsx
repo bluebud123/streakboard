@@ -8,13 +8,39 @@ const DEMO_CELLS = Array.from({ length: 140 }, (_, i) => {
   return { level };
 });
 
-const FEATURES = [
-  { icon: "🔥", title: "Daily streak tracking", desc: "Log your study sessions and build an unbreakable daily habit." },
-  { icon: "📊", title: "GitHub-style heatmap", desc: "See your consistency at a glance — a full 20 weeks of activity." },
-  { icon: "🎯", title: "Goal progress bars", desc: "Set targets, track progress, celebrate wins on your public page." },
-  { icon: "⏳", title: "Exam countdown", desc: "See exactly how many days you have left — so does everyone you share with." },
-  { icon: "📣", title: "One-link sharing", desc: "streakboard.app/u/you — share anywhere. No login needed to view." },
-  { icon: "🆓", title: "Completely free", desc: "No subscriptions, no paywalls. Open source and always free." },
+// Three-step product explanation. Replaces the old 6-card feature grid,
+// which read as generic habit-tracker territory ("Completely free",
+// "Daily streak tracking" as standalone cards). Each step here answers a
+// different user question: what is this, what do I do, what do I get.
+const STEPS = [
+  {
+    icon: "📚",
+    title: "Pick a roadmap or build your own",
+    desc: "Start from a community checklist — USMLE, MBBS, CFA, AWS, marathon training, \u201Cwrite a novel in a year\u201D — or paste your own markdown. Nested topics, sections, sub-items.",
+  },
+  {
+    icon: "✅",
+    title: "Check in daily",
+    desc: "Log minutes or notes. Mark items done as you finish them. Your streak and heatmap update automatically.",
+  },
+  {
+    icon: "🔗",
+    title: "Share one link",
+    desc: "Your profile at streakboard.com/u/you shows your goal countdown, list progress, and streak. Friends and accountability partners follow along — no login needed to view.",
+  },
+];
+
+// Hardcoded marketplace teaser. NOT a DB fetch — Session 1 ships positioning,
+// not plumbing. Real featured cards pull from Discover once the tiered UI
+// (Verified / Community tabs, upvote sort) lands in later sessions.
+// MBBS carries a "Verified" pill as a visual preview of the future badge.
+const FEATURED = [
+  { title: "USMLE Step 1", category: "Medicine" },
+  { title: "MBBS (Universiti Malaya)", category: "Medicine", verified: true },
+  { title: "AWS Solutions Architect Associate", category: "Tech" },
+  { title: "CFA Level 1", category: "Finance" },
+  { title: "Marathon training (16 weeks)", category: "Fitness" },
+  { title: "Write a novel — NaNoWriMo plan", category: "Creative" },
 ];
 
 export default function LandingPage() {
@@ -40,40 +66,45 @@ export default function LandingPage() {
         {/* Hero */}
         <section className="max-w-3xl mx-auto px-6 pt-20 pb-16 text-center">
           <div className="inline-block px-3 py-1 bg-amber-500/10 border border-amber-500/20 rounded-full text-amber-400 text-xs font-medium mb-6">
-            For exam students &amp; self-improvers
+            Shared roadmaps for anything you&rsquo;re working toward
           </div>
           <h1 className="text-4xl sm:text-5xl font-bold text-slate-100 leading-tight mb-6">
-            Track your learning.<br />
-            <span className="text-amber-400">Share your streak.</span>
+            Pick a roadmap.<br />
+            <span className="text-amber-400">Check in daily.</span>
           </h1>
           <p className="text-slate-400 text-lg mb-8 max-w-xl mx-auto">
-            Build daily study habits and share your progress publicly — like GitHub contributions,
-            for your goals. One link. No account needed to view.
+            Browse community-built checklists for exams, skills, certifications, fitness, side projects — or publish your own.
+            Track topics as you finish them, keep a streak, and share one link with anyone on the same path.
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <Link
               href="/signup"
               className="px-8 py-3.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-base transition-colors"
             >
-              Create your Streakboard →
+              Start your board →
             </Link>
             <Link
-              href="/guest"
+              href="/discover"
               className="px-8 py-3.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded-xl text-base transition-colors border border-slate-700"
             >
-              Try without signing up
+              Browse roadmaps
             </Link>
           </div>
         </section>
 
-        {/* Demo heatmap */}
+        {/* Demo heatmap — illustrative example, labelled as such.
+            Non-academic goal (Ironman) deliberately chosen to reinforce
+            that this isn't exam-prep-only. */}
         <section className="max-w-2xl mx-auto px-6 pb-16">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center text-lg font-bold text-amber-400">A</div>
+              <div className="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center text-lg font-bold text-amber-400">E</div>
               <div>
-                <div className="font-semibold text-slate-200">Alex Johnson</div>
-                <div className="text-xs text-slate-500">Studying for USMLE Step 1 · 47 days left</div>
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-slate-200">Example profile</span>
+                  <span className="text-[10px] text-slate-500 uppercase tracking-wider">illustrative</span>
+                </div>
+                <div className="text-xs text-slate-500">Training for Ironman · 94 days left</div>
               </div>
               <div className="ml-auto flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-1.5">
                 <span className="text-lg">🔥</span>
@@ -106,43 +137,81 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* Features */}
+        {/* How it works — 3 steps. Replaces the old 6-card grid. */}
         <section className="max-w-4xl mx-auto px-6 pb-20">
-          <h2 className="text-2xl font-bold text-slate-100 text-center mb-10">Everything you need to stay consistent</h2>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {FEATURES.map((f) => (
-              <div key={f.title} className="bg-slate-900 border border-slate-800 rounded-xl p-5">
-                <div className="text-2xl mb-3">{f.icon}</div>
-                <h3 className="font-semibold text-slate-200 mb-1">{f.title}</h3>
-                <p className="text-slate-400 text-sm leading-relaxed">{f.desc}</p>
+          <h2 className="text-2xl font-bold text-slate-100 text-center mb-10">How it works</h2>
+          <div className="grid sm:grid-cols-3 gap-4">
+            {STEPS.map((s, i) => (
+              <div key={s.title} className="bg-slate-900 border border-slate-800 rounded-xl p-5 relative">
+                <div className="absolute top-3 right-4 text-xs font-mono text-slate-600">{String(i + 1).padStart(2, "0")}</div>
+                <div className="text-2xl mb-3">{s.icon}</div>
+                <h3 className="font-semibold text-slate-200 mb-1">{s.title}</h3>
+                <p className="text-slate-400 text-sm leading-relaxed">{s.desc}</p>
               </div>
             ))}
           </div>
         </section>
 
+        {/* Community marketplace teaser. */}
+        <section className="max-w-4xl mx-auto px-6 pb-20">
+          <div className="text-center mb-8">
+            <h2 className="text-2xl font-bold text-slate-100 mb-2">Built by the community</h2>
+            <p className="text-slate-400 text-sm">Anyone can publish a roadmap. The best ones rise to the top.</p>
+          </div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {FEATURED.map((f) => (
+              <div
+                key={f.title}
+                className="bg-slate-900 border border-slate-800 rounded-xl p-4 hover:border-slate-700 transition-colors"
+              >
+                <div className="flex items-start justify-between gap-2 mb-1">
+                  <h3 className="font-semibold text-slate-200 text-sm leading-snug">{f.title}</h3>
+                  {f.verified && (
+                    <span
+                      className="shrink-0 text-[10px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded px-1.5 py-0.5 uppercase tracking-wider"
+                      title="Reviewed and endorsed by a Streakboard curator"
+                    >
+                      ✓ Verified
+                    </span>
+                  )}
+                </div>
+                <div className="text-[10px] uppercase tracking-wider text-slate-500">{f.category}</div>
+              </div>
+            ))}
+          </div>
+          <div className="text-center mt-6">
+            <Link
+              href="/discover"
+              className="inline-block text-sm font-semibold text-amber-400 hover:text-amber-300 transition-colors"
+            >
+              Browse all roadmaps →
+            </Link>
+          </div>
+        </section>
+
         {/* CTA */}
         <section className="border-t border-slate-800 py-16 text-center px-6">
-          <h2 className="text-2xl font-bold text-slate-100 mb-4">Start your streak today</h2>
-          <p className="text-slate-400 mb-8">Free forever. No credit card. Takes 30 seconds.</p>
+          <h2 className="text-2xl font-bold text-slate-100 mb-4">Start your board</h2>
+          <p className="text-slate-400 mb-8">Free to use. Donations welcome. Takes 30 seconds.</p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <Link
               href="/signup"
               className="inline-block px-10 py-4 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-base transition-colors"
             >
-              Create your Streakboard →
+              Start your board →
             </Link>
             <Link
-              href="/guest"
+              href="/discover"
               className="inline-block px-10 py-4 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded-xl text-base transition-colors border border-slate-700"
             >
-              Try as guest first
+              Browse roadmaps
             </Link>
           </div>
         </section>
       </main>
 
       <footer className="border-t border-slate-800 py-6 text-center text-slate-600 text-sm">
-        Streakboard · Open source · Built for learners
+        Streakboard · Open-market roadmaps · Built by @blue + contributors · Free to use · Donations welcome
       </footer>
     </div>
   );
