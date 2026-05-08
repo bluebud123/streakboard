@@ -54,15 +54,27 @@ function VerifyForm() {
     setLoading(true);
     setError("");
 
-    const res = await fetch("/api/verify-email", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, code }),
-    });
-    const data = await res.json();
+    let res: Response;
+    let data: Record<string, unknown> = {};
+    try {
+      res = await fetch("/api/verify-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, code }),
+      });
+      try {
+        data = await res.json();
+      } catch {
+        // Response body is not valid JSON (e.g. unexpected server crash)
+      }
+    } catch {
+      setError("Network error — please check your connection and try again.");
+      setLoading(false);
+      return;
+    }
 
     if (!res.ok) {
-      setError(data.error || "Verification failed");
+      setError((data.error as string) || "Verification failed");
       setLoading(false);
       return;
     }
@@ -102,17 +114,22 @@ function VerifyForm() {
   async function resendCode() {
     setResending(true);
     setError("");
-    const res = await fetch("/api/verify-email", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, resend: true }),
-    });
-    setResending(false);
-    if (res.ok) {
-      setResent(true);
-      setTimeout(() => setResent(false), 5000);
-    } else {
-      setError("Could not resend — please try again.");
+    try {
+      const res = await fetch("/api/verify-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, resend: true }),
+      });
+      setResending(false);
+      if (res.ok) {
+        setResent(true);
+        setTimeout(() => setResent(false), 5000);
+      } else {
+        setError("Could not resend — please try again.");
+      }
+    } catch {
+      setResending(false);
+      setError("Network error — please check your connection and try again.");
     }
   }
 
