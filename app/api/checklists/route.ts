@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
+import { Prisma } from "@prisma/client";
 import { customAlphabet } from "nanoid";
 
 // Called after every write to bust the cached dashboard reads. Dashboard
@@ -325,7 +326,23 @@ export async function PATCH(req: Request) {
     const latest = await prisma.checklistRevision.findFirst({
       where: { itemId, userId }, orderBy: { createdAt: "desc" },
     });
-    if (latest) await prisma.checklistRevision.delete({ where: { id: latest.id } });
+    if (latest) {
+      try {
+        await prisma.checklistRevision.delete({ where: { id: latest.id } });
+      } catch (err) {
+        // Concurrent removeLastRevision requests (e.g. double-tap undo or
+        // client retry) can both read the same latest revision and race on
+        // delete. Prisma throws P2025 when the row was already deleted by
+        // the other request — treat that as a successful no-op and let the
+        // count below reflect the true remaining state.
+        if (
+          !(err instanceof Prisma.PrismaClientKnownRequestError) ||
+          err.code !== "P2025"
+        ) {
+          throw err;
+        }
+      }
+    }
 
     const remaining = await prisma.checklistRevision.count({ where: { itemId, userId } });
     if (remaining === 0) {
